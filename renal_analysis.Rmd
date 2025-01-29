@@ -24,6 +24,11 @@ library(gridExtra)
 library(worlddatr)
 
 conflicted::conflicts_prefer(dplyr::filter)
+
+
+binomial_smooth <- function(...) {
+  geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
+}
 ```
 
 ## Load data
@@ -52,51 +57,10 @@ sm_data$Lactate = ifelse(sm_data$Lactate>50,NA,sm_data$Lactate)
 ### Hemoglobin-Hematocrit
 
 ```{r}
-sm_data$HCT = sm_data$`Hematocrit_%`
-sm_data$Hb = sm_data$Hemoglobin_g_L/10
-sm_data = sm_data %>% select(-Hemoglobin_g_L, -`Hematocrit_%`)
-sm_data %>% ggplot(aes(x=Hb))+geom_histogram(binwidth = .1)+
-  xlab('Hemoglobin (g/dL)')+theme_minimal()
-sm_data %>% ggplot(aes(x=HCT))+geom_histogram(binwidth = .1)+
-  xlab('Hematocrit (%)')+theme_minimal()
-
-
-sum(!is.na(sm_data$HCT) & !is.na(sm_data$Hb))
-sm_data %>% ggplot(aes(x=Hb, y = HCT,colour = STUDY))+geom_point()+geom_smooth(aes(group=NA),method=lm)
-mod1 = MASS::rlm(HCT~Hb, data = sm_data)
-mod2 = MASS::rlm(Hb~HCT, data = sm_data)
-coef(mod1)[2]
-1/coef(mod2)[2]
-
-table(is.na(sm_data$HCT) | is.na(sm_data$Hb))
-table(is.na(sm_data$HCT) & is.na(sm_data$Hb))
-# imputation just using 3x rule
-ind = which(is.na(sm_data$HCT) & !is.na(sm_data$Hb))
-length(ind)
-sm_data$HCT[ind] = 3 * sm_data$Hb[ind]
-
-ind = which(!is.na(sm_data$HCT) & is.na(sm_data$Hb))
-length(ind)
-sm_data$Hb[ind] = sm_data$HCT[ind]/3
-table(is.na(sm_data$HCT) | is.na(sm_data$Hb))
-
+source('hb_data_plotting.R')
 ```
 
-```{r variables_baseline, fig.width=10, fig.height=8}
-# ss = unique(sm_data_analysis$STUDY)
-# for(s in ss){
-#   print(s)
-#   par(mfrow=c(2,3),las=1)
-#   dat = sm_data_analysis %>% filter(STUDY==s)
-#   if(any(!is.na(dat$Creatinine_umol_L))) hist(log10(dat$Creatinine_umol_L),main = s)
-#   if(any(!is.na(dat$BUN))) hist(log10(dat$BUN),main = s)
-#   hist(dat$Age,main = s)
-#   if(any(!is.na(dat$`Hematocrit_%`))) hist(dat$`Hematocrit_%`,main = s)
-#   if(any(!is.na(dat$`Base Excess_mmol_L`)))hist(dat$`Base Excess_mmol_L`,main = s)
-#   if(any(!is.na(dat$Glucose_mmol_L))) hist(dat$Glucose_mmol_L,main = s)
-#   if(any(!is.na(dat$para_ul))) hist(log10(dat$para_ul+50),main = s)
-# }
-```
+
 
 
 ## Make analysis dataset
@@ -104,10 +68,13 @@ table(is.na(sm_data$HCT) | is.na(sm_data$Hb))
 sm_data_analysis = sm_data %>% 
   filter(Malaria_Positive, !is.na(Died), !is.na(Creatinine_umol_L) | !is.na(BUN))
 table(sm_data_analysis$STUDY)
+table(!is.na(sm_data_analysis$Creatinine_umol_L))
+table(!is.na(sm_data_analysis$BUN))
+
 sm_data_analysis_both = sm_data_analysis %>% 
   filter(!is.na(Creatinine_umol_L), !is.na(BUN)) 
 
-rm(sm_data)
+# rm(sm_data)
 
 aggregate(Age ~ STUDY, data = sm_data_analysis, FUN = quantile)
 aggregate(RFSTDTC ~ STUDY, data = sm_data_analysis, FUN = function(x) range(x,na.rm = T))
@@ -131,7 +98,7 @@ mortality_threshold = 0.05
 
 map
 ```{r patient_map}
-create_participant_map(DATA_DM= sm_data_analysis, include_ATA = FALSE)
+# create_participant_map(DATA_DM= sm_data_analysis, include_ATA = FALSE)
 ```
 
 
@@ -382,9 +349,7 @@ Tabular view
 
 ```{r lactate, fig.width=12, fig.height=8}
 table(sm_data_analysis$STUDY[!is.na(sm_data_analysis$Lactate)])
-binomial_smooth <- function(...) {
-  geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
-}
+
 
 sm_data_analysis%>%ggplot(aes(y=Lactate,x=Hb))+geom_jitter(width = .05, height = 0.05)+geom_smooth()+xlim(2,12)+ylim(0,15)+theme_minimal()+
   xlab('Haemoglobin (g/dL)')+ylab('Lactate (mmol/L)')
@@ -521,9 +486,7 @@ lactate
 ```{r}
 table(sm_lactate$STUDY)
 aggregate(Died~STUDY, data = sm_lactate,FUN = mean)
-binomial_smooth <- function(...) {
-  geom_smooth(method = "glm", method.args = list(family = "binomial"), ...)
-}
+
 sm_lactate %>% ggplot(aes(x=Lactate, group = STUDY,colour = STUDY))+geom_density()
 sm_lactate %>% ggplot(aes(x=Lactate, y = Died, group = STUDY,colour = STUDY))+binomial_smooth()
 ```
