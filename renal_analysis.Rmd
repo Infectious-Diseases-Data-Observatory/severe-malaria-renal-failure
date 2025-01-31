@@ -56,8 +56,9 @@ sm_data$Lactate = ifelse(sm_data$Lactate>50,NA,sm_data$Lactate)
 
 ### Hemoglobin-Hematocrit
 
-```{r}
+```{r hb_hct}
 source('hb_data_plotting.R')
+sm_data=hb_hct_impute(sm_data = sm_data)
 ```
 
 
@@ -128,7 +129,7 @@ build_table(lyt = lyt, df = sm_data_analysis)
 How do the distributions of BUN and creatinine vary across studies in the children?
 
 ```{r boxplots}
- sm_data_analysis %>% filter(Weight_kg<30) %>%
+sm_data_analysis %>% filter(Weight_kg<30) %>%
   ggplot(aes(x=STUDY, y=Creatinine_umol_L)) + geom_boxplot()+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))
 
@@ -136,80 +137,55 @@ sm_data_analysis %>% filter(Weight_kg<30) %>%
   ggplot(aes(x=STUDY, y=BUN)) + geom_boxplot()+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))
 ```
-```{r}
-xx=sm_data_analysis %>% group_by(SITEID, STUDY) %>%
-  mutate(group_mortality = mean(Died),
-         group_n=n(),
-         group_median_creatinine=median(Creatinine_umol_L,na.rm=T),
-         group_median_bun=median(BUN,na.rm=T)) %>%
-  distinct(SITEID, STUDY, .keep_all = T) %>%
-  select(SITEID, STUDY, group_mortality, group_n, group_median_creatinine, group_median_bun)
-xx %>% ggplot(aes(x=group_median_creatinine, y=group_mortality))+geom_point()+geom_smooth(method = lm)
-xx %>% ggplot(aes(x=group_median_bun, y=group_mortality))+geom_point()+geom_smooth(method = lm)
 
-```
+# xx=sm_data_analysis %>% group_by(SITEID, STUDY) %>%
+#   mutate(group_mortality = mean(Died),
+#          group_n=n(),
+#          group_median_creatinine=median(Creatinine_umol_L,na.rm=T),
+#          group_median_bun=median(BUN,na.rm=T)) %>%
+#   distinct(SITEID, STUDY, .keep_all = T) %>%
+#   select(SITEID, STUDY, group_mortality, group_n, group_median_creatinine, group_median_bun)
+# xx %>% ggplot(aes(x=group_median_creatinine, y=group_mortality))+geom_point()+geom_smooth(method = lm)
+# xx %>% ggplot(aes(x=group_median_bun, y=group_mortality))+geom_point()+geom_smooth(method = lm)
 
 
 
-```{r creatinine_v_bun, fig.width=12, fig.height=10}
+
+
+```{r creatinine_v_bun, fig.width=12, fig.height=8}
 p1=sm_data_analysis_both %>%
   ggplot(aes(x=Creatinine_umol_L, y = BUN, colour = STUDY))+
   geom_point(alpha=0.2)+geom_smooth(se = F)+
   scale_y_continuous(transform  ='log10') +
   geom_hline(yintercept = 20)+geom_vline(xintercept = 265)+
-  xlab('Creatinine (umol/L)')+ylab('Urea Nitrogen (mmol/L)')+
+  xlab('Creatinine (umol/L)')+ylab('BUN (mmol/L)')+
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
-  annotation_logticks() + theme_bw(base_size = 20)
+  annotation_logticks() + theme_bw(base_size = 20)+
+  theme(
+    legend.position = c(0.97, 0.03), 
+    legend.justification = c(1, 0), 
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),
+    legend.margin = margin(6, 6, 6, 6),  
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10))
 
 
 p2=sm_data_analysis_both %>%
   ggplot(aes(x=(Creatinine_umol_L/BUN), colour = STUDY))+
-  geom_density()+theme_bw(base_size = 22)+
+  geom_density()+theme_bw(base_size = 20)+
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))+
   annotation_logticks(sides='b')+
-  xlab('Creatinine to urea ratio')+ylab('')+
-  scale_y_discrete(labels = NULL, breaks = NULL)#+
-#  theme(legend.position="none")
-p1
-p2
-# grid.arrange(p1,p2,nrow=1)
+  xlab('Creatinine to BUN ratio')+ylab('')+
+  scale_y_discrete(labels = NULL, breaks = NULL)+
+  theme(legend.position = 'none')
 
-# sm_data_analysis_both %>% filter(STUDY=='Chittagong')%>%
-#   ggplot(aes(x=Creatinine_umol_L, y = BUN, colour = STUDY))+
-#   geom_point(alpha=1)+geom_smooth()+
-#   scale_y_continuous(transform  ='log10') +
-#   geom_hline(yintercept = 20)+geom_vline(xintercept = 265)+
-#   xlab('Creatinine (umol/L)')+ylab('Urea Nitrogen (mmol/L)')+
-#   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
-#   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
-#   annotation_logticks() + theme_bw(base_size = 15)
-# 
-# sm_data_analysis_both %>% filter(STUDY=='TRACT')%>%
-#     ggplot(aes(x=Creatinine_umol_L, y = BUN, colour = Died))+
-#     geom_point(alpha=1)+geom_smooth()+
-#     scale_y_continuous(transform  ='log10') +
-#     geom_hline(yintercept = 20)+geom_vline(xintercept = 265)+
-#     xlab('Creatinine (umol/L)')+ylab('Urea Nitrogen (mmol/L)')+
-#     scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
-#     scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
-#     annotation_logticks() + theme_bw(base_size = 15)
-# 
-# sm_data_analysis_both %>% filter(STUDY=='FEAST')%>%
-#     ggplot(aes(x=Creatinine_umol_L, y = BUN, colour = Malaria_Positive))+
-#     geom_point(alpha=1)+geom_smooth()+
-#     scale_y_continuous(transform  ='log10') +
-#     geom_hline(yintercept = 20)+geom_vline(xintercept = 265)+
-#     xlab('Creatinine (umol/L)')+ylab('Urea Nitrogen (mmol/L)')+
-#     scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
-#     scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
-#     annotation_logticks() + theme_bw(base_size = 15)
-
+grid.arrange(p1,p2,nrow=1)
 ```
 
 
 ```{r weight_age, fig.width=12, fig.height=8}
-p1=sm_data_analysis %>% 
+p1=sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
   ggplot(aes(x=Age, y = Creatinine_umol_L, colour = STUDY))+
   geom_jitter(height = 0.05, width = .1, alpha=my_alpha)+
   ylab('Creatinine (umol/L)')+xlab('Age (years)')+
@@ -219,9 +195,12 @@ p1=sm_data_analysis %>%
   geom_smooth(se=SEsmooth)+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
   annotation_logticks(sides='l') +
-  theme_bw(base_size = 20)+theme(legend.position="none")
+  theme_bw(base_size = 15)+
+  theme(legend.position="none")
 
-p2=sm_data_analysis %>% 
+xx = sm_data_analysis %>% filter(!is.na(Creatinine_umol_L), !is.na(Weight_kg)) 
+writeLines(sprintf('There are %s patients with weight and Creatinine jointly measured', nrow(xx)))
+p2 = xx%>%
   ggplot(aes(x=Weight_kg, y = Creatinine_umol_L, colour = STUDY))+
   geom_jitter(height = 0.01, width = .1, alpha=my_alpha)+
   ylab('Creatinine (umol/L)')+xlab('Weight (kg)')+
@@ -230,12 +209,19 @@ p2=sm_data_analysis %>%
   geom_smooth(se=SEsmooth)+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
   annotation_logticks(sides='l') +
-  theme_bw(base_size = 20)#+theme(legend.position="none")
+  theme_bw(base_size = 15)+
+  theme(
+    legend.position = c(0.97, 0.03), 
+    legend.justification = c(1, 0),
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),
+    legend.margin = margin(6, 6, 6, 6),  
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10))
 
 p3=sm_data_analysis %>% 
   ggplot(aes(x=Age, y = BUN, colour = STUDY))+
   geom_jitter(height = 0.05, width = .1, alpha=my_alpha)+
-  ylab('Urea Nitrogen (mmol/L)')+xlab('Age (years)')+
+  ylab('BUN (mmol/L)')+xlab('Age (years)')+
   geom_hline(yintercept = 20)+
   scale_y_continuous(transform='log10') + 
   scale_x_continuous(transform='sqrt',breaks = sqrt_breaks) +
@@ -244,158 +230,84 @@ p3=sm_data_analysis %>%
   annotation_logticks(sides='l') +
   theme_bw(base_size = 20)#+theme(legend.position="none")
 
-p4=sm_data_analysis %>% ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
+xx = sm_data_analysis %>% filter(!is.na(BUN), !is.na(Weight_kg)) 
+writeLines(sprintf('There are %s patients with weight and BUN jointly measured', nrow(xx)))
+p4=xx%>%ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
   geom_jitter(height = 0.03, width = .1, alpha=my_alpha)+
-  ylab('Urea Nitrogen (mmol/L)')+xlab('Weight (kg)')+
+  ylab('BUN (mmol/L)')+xlab('Weight (kg)')+
   geom_hline(yintercept = 20)+
   scale_x_continuous(transform='sqrt',breaks = sqrt_breaks) +
   geom_smooth(se=SEsmooth)+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
-  annotation_logticks(sides='l') + theme_bw(base_size = 20)
-#grid.arrange(p1,p2,p3,p4)
-grid.arrange(p2+theme(legend.position="none"),p4+theme(legend.position="none"),nrow=1)
-p3
-sm_data_analysis %>% ggplot(aes(x=para_ul+50, y = BUN, colour = STUDY))+
-  geom_point(alpha=0.05)+xlab('Parasitaemia (/uL)')+
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
-  annotation_logticks(sides='lb') +
-  geom_smooth(aes())+theme_bw()+geom_hline(yintercept = 20)
+  annotation_logticks(sides='l') + theme_bw(base_size = 15)+
+  theme(
+    legend.position = c(0.97, 0.03),        # Position the legend inside the plot (bottom-right corner)
+    legend.justification = c(1, 0),       # Justify the legend to the bottom-right
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),  # Optional: adds border to legend
+    legend.margin = margin(6, 6, 6, 6),    # Adjust the margin around the legend if needed
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10)
+  )
+
+grid.arrange(p2,p4,nrow=1)
+
+# 
+# sm_data_analysis %>% ggplot(aes(x=para_ul+50, y = BUN, colour = STUDY))+
+#   geom_point(alpha=0.05)+xlab('Parasitaemia (/uL)')+
+#   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
+#   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
+#   annotation_logticks(sides='lb') +
+#   geom_smooth(aes())+theme_bw()+geom_hline(yintercept = 20)
 
 xx = sm_data_analysis %>%
-  filter(STUDY %in% c('AQUAMAT','SEAQUAMAT','FEAST'), !is.na(BUN)) 
+  filter(STUDY %in% c('AQUAMAT','SEAQUAMAT','FEAST','TRACT'), !is.na(BUN)) 
 dim(xx)
 xx %>% ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
   geom_jitter(height = 0.02, width = .02, alpha=my_alpha)+
-  ylab('Urea Nitrogen (mmol/L)')+xlab('Weight (kg)')+
+  ylab('BUN (mmol/L)')+xlab('Weight (kg)')+
   geom_hline(yintercept = 20)+
   scale_y_continuous(transform='log10') +
   scale_x_continuous(transform='sqrt',breaks = sqrt_breaks,limits=bun_limits) + 
-  geom_smooth(aes(group=NA))+
+  geom_smooth()+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
   annotation_logticks(sides='l') +
   theme_bw(base_size = 15)#+theme(legend.position="none")
 ```
 
 
-```{r Vietnamese_children}
-dat = sm_data_analysis %>% filter(STUDY %in% c('Dong Nai'))
-table(Creat_na=is.na(dat$Creatinine_umol_L), BUN_na=is.na(dat$BUN))
-my_lims = c(1,100)
-
-p1= dat %>%
-  ggplot(aes(x=Creatinine_umol_L))+geom_histogram()+
-  scale_x_continuous(transform='log10') +
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
-  annotation_logticks(sides='b') + theme_bw()
-
-p2=dat %>%
-  ggplot(aes(x=BUN))+geom_histogram()+
-  scale_x_continuous(transform='log10') +
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks, limits=c(1,100)) +
-  annotation_logticks(sides='b') + theme_bw()
-
-p3=dat %>%
-  ggplot(aes(x=BUN, y=Creatinine_umol_L))+geom_point()+geom_smooth()+
-  scale_x_continuous(transform='log10') +scale_y_continuous(transform='log10') +
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks, limits=c(1,100)) +
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks, limits=c(10,400)) +
-  annotation_logticks(sides='lb') + theme_bw()
-
-quantile(dat$BUN,probs = c(0.025,0.975),na.rm = T)
-mytitle=paste('Vietnamese children: ',sum(dat$BUN>20,na.rm = T),'/',nrow(dat),' >20mmol/L',sep = '')
-mod = gam(Died ~ s(log10(BUN),k=4),data = dat, family = binomial())
-p4=predict_gam(mod,tran_fun = gtools::inv.logit,series = "BUN",
-               values = list(SITEID= -1, BUN=1:40))%>%
-  plot()+ylim(0,1)+ggtitle('Vietnamese children')+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=my_lims) +
-  annotation_logticks(sides='b')+theme_bw()+xlab('Urea Nitrogen (mmol/L)')+
-  geom_vline(xintercept = 10)+geom_hline(yintercept = 0.05)+theme(legend.position="none")
-
-xx=sm_data_analysis_both %>% filter(STUDY=='Dong Nai')
-mean(xx$BUN>10)
-mean(xx$BUN>20)
-
-grid.arrange(p1,p2)
+Remove AQ Gambia from analysis dataset as unreliable creatinines
+```{r}
+sm_data_analysis = sm_data_analysis %>% filter(!STUDY=='AQ Gambia')
 ```
 
 
+## Mortality models
 
-
-Tabular view
 
 ```{r}
-# lyt <- basic_table() %>%
-#   split_cols_by("STUDY") %>%
-#   analyze(c("Creatine", "BMRKR1", "BMRKR2"), function(x, ...) {
-#     if (is.numeric(x)) {
-#       in_rows(
-#         "Mean (sd)" = c(mean(x), sd(x)),
-#         "Median" = median(x),
-#         "Min - Max" = range(x),
-#         .formats = c("xx.xx (xx.xx)", "xx.xx", "xx.xx - xx.xx")
-#       )
-#     } else if (is.factor(x) || is.character(x)) {
-#       in_rows(.list = list_wrap_x(table)(x))
-#     } else {
-#       stop("type not supported")
-#     }
-#   })
-```
+xx=sm_data_analysis%>%filter(Coma_Final==0, !is.na(Creatinine_umol_L))
+xx %>% ggplot(aes(x=BUN,y=Died, color=Weight_category))+
+  scale_x_continuous(transform='log10') +
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
+  annotation_logticks(sides='b') +
+  binomial_smooth()+theme_minimal()+
+  #theme(plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"), legend.position = "none")+
+  ylab('Probability of death')+xlab('BUN (mmol/L)')+
+  geom_hline(yintercept = mortality_threshold)+
+  coord_cartesian(ylim=c(0, .4), xlim = c(1,100))
 
 
+xx=sm_data_analysis%>%filter(Coma_Final==0, !is.na(BUN))
+xx %>% ggplot(aes(x=BUN,y=Died, color=Weight_category))+
+  scale_x_continuous(transform='log10') +
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
+  annotation_logticks(sides='b') +
+  binomial_smooth()+theme_minimal()+
+  #theme(plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"), legend.position = "none")+
+  ylab('Probability of death')+xlab('BUN (mmol/L)')+
+  geom_hline(yintercept = mortality_threshold)+
+  coord_cartesian(ylim=c(0, .4), xlim = c(1,40))
 
-## Lactate mortality model
-
-```{r lactate, fig.width=12, fig.height=8}
-table(sm_data_analysis$STUDY[!is.na(sm_data_analysis$Lactate)])
-
-
-sm_data_analysis%>%ggplot(aes(y=Lactate,x=Hb))+geom_jitter(width = .05, height = 0.05)+geom_smooth()+xlim(2,12)+ylim(0,15)+theme_minimal()+
-  xlab('Haemoglobin (g/dL)')+ylab('Lactate (mmol/L)')
-
-sm_data_analysis %>% filter(!is.na(Hb)) %>%
-  ggplot(aes(x=Lactate,y=Died,color = Hb<5))+binomial_smooth()+xlim(0,15)+theme_minimal()+
-  ylab('Probability of death')+xlab('Lactate (mmol/L)')
-
-sm_data_analysis %>% filter(!is.na(Hb), Hb>5, !is.na(Coma_Final)) %>%
-  ggplot(aes(x=Lactate,y=Died,color = as.factor(Coma_Final)))+binomial_smooth()+xlim(0,15)+theme_minimal()+
-  ylab('Probability of death')+xlab('Lactate (mmol/L)')
-
-xx=sm_data_analysis %>% filter(!is.na(Hb), !is.na(Coma_Final), Coma_Final==0) 
-table(xx$Hb>5)
-xx%>%
-  ggplot(aes(x=Lactate,y=Died,color = Hb<5))+binomial_smooth()+xlim(0,12)+theme_minimal()+
-  ylab('Probability of death')+xlab('Lactate (mmol/L)')+
-  geom_hline(yintercept = mortality_threshold)
-
-
-xx=sm_data_analysis %>% filter(Hb>5, !is.na(Coma_Final), Coma_Final==0, !is.na(Lactate)) %>% group_by(STUDY) %>% mutate(mean_died=mean(Died))%>%
-  ungroup() %>% filter(mean_died>0.02)
-
-aggregate(Died ~ STUDY, data = xx, FUN = mean)
-xx%>%
-  ggplot(aes(x=Lactate,y=Died,color=STUDY))+
-  binomial_smooth()+xlim(0,12)+theme_minimal()+
-  ylab('Probability of death')+xlab('Lactate (mmol/L)')+
-  geom_hline(yintercept = mortality_threshold)
-```
-
-
-```{r lactate_vs_BUN_vs_Hb}
-sm_data_analysis %>% filter(!is.na(BUN), !is.na(Lactate)) %>%
-  ggplot(aes(x=BUN, y=Lactate, colour = STUDY)) +
-  geom_jitter()+ scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
-  annotation_logticks(sides='b')+theme_bw()+xlab('Urea Nitrogen (mmol/L)')+
-  ylab('Lactate (mmol/L)')+geom_smooth(group=NA)
-
-sm_data_analysis %>% filter(!is.na(BUN), !is.na(Hb)) %>%
-  ggplot(aes(x=BUN, y=Hb, colour = STUDY)) +
-  geom_jitter()+ scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
-  annotation_logticks(sides='b')+theme_bw()+xlab('Urea Nitrogen (mmol/L)')+
-  ylab('Hemoglobin (g/dL)')+geom_smooth(group=NA)
-
-sm_data_analysis %>% filter(!is.na(Hb)) %>%ggplot(aes(x=Hb<5, y=log10(BUN)))+geom_boxplot()
 ```
 
 
@@ -404,27 +316,120 @@ sm_data_analysis %>% filter(!is.na(Hb)) %>%ggplot(aes(x=Hb<5, y=log10(BUN)))+geo
 sm_data_analysis$Weight_category = as.factor(sm_data_analysis$Weight_category)
 sm_data_analysis$COUNTRY=as.factor(sm_data_analysis$COUNTRY)
 
+### Creatinine model
 sm_creat = sm_data_analysis %>%
-  filter(!is.na(Creatinine_umol_L), 
+  filter(!is.na(Creatinine_umol_L), !is.na(Weight_category),
          Malaria_Positive, Coma_Final==0
   ) 
 table(sm_creat$STUDY)
 dim(sm_creat)
 mean(sm_creat$Died)
 table(sm_creat$Weight_category)
-mod_all = gam(Died ~ s(log10(Creatinine_umol_L), by=Weight_category,k=3)+
-                s(COUNTRY, bs='re'), 
-              family = 'binomial',data = sm_creat)
-p1=predict_gam(mod_all,tran_fun = gtools::inv.logit,series = "Creatinine_umol_L",
-               values = list(COUNTRY= -1, 
-                             Creatinine_umol_L=10^seq(1.3,2.8,length.out=20),
-                             Weight_category = unique(sm_creat$Weight_category))) %>%
+
+mod1 = gam(Died ~ s(log10(Creatinine_umol_L),k=3)+s(SITEID, bs='re'), 
+           family = 'binomial',data = sm_creat %>% filter(Weight_category=='(0,25]'))
+mod2 = gam(Died ~ s(log10(Creatinine_umol_L),k=3)+s(SITEID, bs='re'), 
+           family = 'binomial',data = sm_creat %>% filter(Weight_category!='(0,25]'))
+pred1=predict_gam(mod1,tran_fun = gtools::inv.logit,series = "Creatinine_umol_L",
+                  values = list(SITEID= -1, 
+                                Creatinine_umol_L=10^seq(1.3,2.8,length.out=20))) 
+pred1$Weight_category='(0,25]'
+pred2=predict_gam(mod2,tran_fun = gtools::inv.logit,series = "Creatinine_umol_L",
+                  values = list(SITEID= -1, 
+                                Creatinine_umol_L=10^seq(1.3,2.8,length.out=20))) 
+pred2$Weight_category='(25,100]'
+preds = rbind(pred1, pred2)
+
+
+h1=sm_creat%>%ggplot(aes(x = Creatinine_umol_L,colour = Weight_category))+
+  scale_x_log10(limits=crea_limits) + geom_density()+theme_minimal()+theme_bw(base_size = 15)+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), 
+        legend.position="none",
+        plot.margin = unit(c(0, 0.5, 0, 0.5), "cm"))+
+  ggtitle(label = paste('No coma (n=',sum(xx$Coma_Final==0,na.rm = T),')',sep = ''))
+p1=preds %>%
   plot(comparison='Weight_category')+ylim(0,.25)+
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 20)+xlab('Creatinine (umol/L)')+
+  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('Creatinine (umol/L)')+
   geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)+
-  theme(legend.position="none")
+  theme(legend.position="none",
+        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))
 
+
+### BUN model
+sm_bun = sm_data_analysis %>%
+  filter(!is.na(BUN), !is.na(Weight_category),
+         Malaria_Positive, Coma_Final==0
+  ) 
+table(sm_bun$STUDY)
+dim(sm_bun)
+mean(sm_bun$Died)
+table(sm_bun$Weight_category)
+
+mod_all = gam(Died ~ s(log10(BUN),by = Weight_category)+s(COUNTRY, bs='re'), 
+              family = 'binomial',data = sm_creat)
+pred1=predict_gam(mod_all,tran_fun = gtools::inv.logit,series = "BUN",
+                  values = list(COUNTRY= -1, 
+                                Weight_category='(0,25]',
+                                BUN=10^seq(0,1.45,length.out=20) )) 
+pred1$Weight_category='(0,25]'
+pred2=predict_gam(mod_all,tran_fun = gtools::inv.logit,series = "BUN",
+                  values = list(COUNTRY= -1, 
+                                Weight_category='(25,100]',
+                                BUN=10^seq(0,2,length.out=20))) 
+pred2$Weight_category='(25,100]'
+preds = rbind(pred1, pred2)
+
+sm_bun$BUN_deciles = 
+  cut(sm_bun$BUN, 
+      breaks = round(quantile(sm_bun$BUN,probs=seq(0,1,by=0.1)),1),
+      include.lowest = T)
+
+sm_bun_summary=sm_bun %>% group_by(BUN_deciles, Weight_category) %>%
+  mutate(Bun_decile_mortality=mean(Died),
+         n_deaths = sum(Died),
+         n = n(),
+         lower_ci = qbeta(0.025, 1+n_deaths, 1+(n-n_deaths)),
+         upper_ci = qbeta(0.975, 1+n_deaths, 1+(n-n_deaths)) ) %>%
+  distinct(BUN_deciles, Weight_category, .keep_all = T) %>%
+  select(Weight_category,BUN_deciles,
+         Bun_decile_mortality,n,n_deaths,lower_ci, upper_ci)%>% 
+  arrange(Weight_category, BUN_deciles)
+
+
+sm_bun_summary%>%
+  ggplot(aes(x=BUN_deciles, y=Bun_decile_mortality,
+                            colour = Weight_category))+
+  geom_point()+
+  geom_linerange(aes(ymin = lower_ci,ymax = upper_ci))+
+  theme_minimal()+
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+plot(sm_bun_summary$BUN_deciles, sm_bun_summary$Bun_decile_mortality)
+h2=sm_bun%>%ggplot(aes(x = BUN,colour = Weight_category))+
+  scale_x_log10(limits=bun_limits) + geom_density()+theme_minimal()+theme_bw(base_size = 15)+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), 
+        legend.position="none",
+        plot.margin = unit(c(0, 0.5, 0, 0.5), "cm"))+
+  ggtitle(label = paste('No coma (n=',sum(xx$Coma_Final==0,na.rm = T),')',sep = ''))
+p2=preds %>%
+  ggplot(aes(x=BUN,y = Died, color = Weight_category))+
+  geom_ribbon(aes(ymin=lower_ci, ymax = upper_ci,alpha=0.2,fill = Weight_category))+
+  geom_line()+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
+  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('BUN (mmol/L)')+
+  geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)+
+  coord_cartesian(ylim = c(0,0.25))
+
+plot(comparison='Weight_category')+ylim(0,.25)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
+  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('BUN (mmol/L)')+
+  geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)+
+  theme(legend.position="none",
+        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))
+
+
+grid.arrange(h1, h2, p1,p2,nrow=2, ncol = 2, heights = c(1, 1.2))
 
 
 sm_bun = sm_data_analysis %>%
@@ -454,43 +459,7 @@ p2=predict_gam(mod_all,tran_fun = gtools::inv.logit,series = "BUN",
 
 
 
-sm_data_analysis$Lactate = sm_data_analysis$`Lactic Acid_mmol_L`
-sm_lactate = sm_data %>%
-  filter(!is.na(Lactate), Lactate<50,
-         Malaria_Positive,
-         Coma_Final==0
-  ) 
-nrow(sm_lactate)
-table(sm_lactate$Weight_category)
-
-
-sm_lactate = sm_lactate%>%group_by(STUDY)%>%
-  mutate(n = n()) %>% filter(n>100)
-table(sm_lactate$STUDY)
-mod_all = gam(Died ~ s(Lactate,by=STUDY), 
-              family = 'binomial',data = sm_lactate)
-p3=predict_gam(mod_all,tran_fun = gtools::inv.logit,series = "Lactate",
-               values = list(COUNTRY= -1, 
-                             Lactate=seq(0,15,length.out=20),
-                             STUDY=unique(sm_lactate$STUDY))) %>%
-  plot()+ylim(0,.25)+
-  theme_bw(base_size = 20)+xlab('Lactate (mmol/L)')+
-  geom_vline(xintercept = 5)+geom_hline(yintercept = mortality_threshold)
-
-grid.arrange(p1,p2,p3, nrow=1)
-
 ```
-
-
-lactate
-```{r}
-table(sm_lactate$STUDY)
-aggregate(Died~STUDY, data = sm_lactate,FUN = mean)
-
-sm_lactate %>% ggplot(aes(x=Lactate, group = STUDY,colour = STUDY))+geom_density()
-sm_lactate %>% ggplot(aes(x=Lactate, y = Died, group = STUDY,colour = STUDY))+binomial_smooth()
-```
-
 
 
 
@@ -540,24 +509,24 @@ build_table(lyt = lyt, df = sm_data_analysis%>%filter(!is.na(Creatinine_umol_L))
 ## Better prognosticator
 
 ```{r}
-sm_data_analysis_both$Lactate=ifelse(sm_data_analysis_both$`Lactic Acid_mmol_L`>50, NA, sm_data_analysis_both$`Lactic Acid_mmol_L`)
-
-dim(sm_data_analysis_both)
-table(sm_data_analysis_both$STUDY)
-table(is.na(sm_data_analysis_both$`Lactic Acid_mmol_L`))
-
-sm_data_analysis_both$STUDY=as.factor(sm_data_analysis_both$STUDY)
-
-mod_both_BUN = gam(Died ~ scale(log10(BUN)) + s(COUNTRY,bs='re') , data = sm_bun , family = 'binomial')
-
-mod_both_crea = gam(Died ~ scale(log10(Creatinine_umol_L)) + s(COUNTRY,bs='re') , data = sm_creat, family = 'binomial')
-
-mod_both = gam(Died ~ scale(log10(Creatinine_umol_L)) + scale(log10(BUN))+ scale(Lactate) + s(STUDY,bs='re') , data = sm_data_analysis_both, family = 'binomial')
-
-
-exp(coef(mod_both_BUN)[2])
-exp(coef(mod_both_crea)[2])
-exp(coef(mod_both)[c(2,3,4)])
+# sm_data_analysis_both$Lactate=ifelse(sm_data_analysis_both$`Lactic Acid_mmol_L`>50, NA, sm_data_analysis_both$`Lactic Acid_mmol_L`)
+# 
+# dim(sm_data_analysis_both)
+# table(sm_data_analysis_both$STUDY)
+# table(is.na(sm_data_analysis_both$`Lactic Acid_mmol_L`))
+# 
+# sm_data_analysis_both$STUDY=as.factor(sm_data_analysis_both$STUDY)
+# 
+# mod_both_BUN = gam(Died ~ scale(log10(BUN)) + s(COUNTRY,bs='re') , data = sm_bun , family = 'binomial')
+# 
+# mod_both_crea = gam(Died ~ scale(log10(Creatinine_umol_L)) + s(COUNTRY,bs='re') , data = sm_creat, family = 'binomial')
+# 
+# mod_both = gam(Died ~ scale(log10(Creatinine_umol_L)) + scale(log10(BUN))+ scale(Lactate) + s(STUDY,bs='re') , data = sm_data_analysis_both, family = 'binomial')
+# 
+# 
+# exp(coef(mod_both_BUN)[2])
+# exp(coef(mod_both_crea)[2])
+# exp(coef(mod_both)[c(2,3,4)])
 
 ```
 
