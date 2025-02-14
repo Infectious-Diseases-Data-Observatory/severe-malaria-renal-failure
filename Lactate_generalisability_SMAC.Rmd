@@ -85,6 +85,12 @@ dat$Anaemic=dat$`Hb<5g/dL`
 brms 
 
 ```{r}
+## mgcv version
+dat$Anaemic=as.factor(dat$Anaemic)
+gam_lactate <- mgcv::gam(Died ~ s(Lactate, by=Anaemic) + s(STUDY, bs='re'),
+          data = dat, family = binomial())
+
+
 m2_lactate <- brm(bf(Died ~ s(Lactate, by=Anaemic) + (1|STUDY)),
           data = dat, 
           family = bernoulli(), cores = 4, seed = 17,
@@ -92,8 +98,9 @@ m2_lactate <- brm(bf(Died ~ s(Lactate, by=Anaemic) + (1|STUDY)),
 dat = dat %>% filter(!is.na(Anaemic), !is.na(Lactate))
 dat$M2_preds=colMeans(posterior_epred(m2_lactate,re_formula = NA))
 dat %>% ggplot(aes(x=Lactate, y = M2_preds, colour = STUDY))+  geom_jitter()
-> sm_data_analysis %>% ggplot(aes(x=BUN_Imputed_FC, y = M2_preds, colour = STUDY))+
-+     geom_jitter()
+sm_data_analysis %>% 
+  ggplot(aes(x=BUN_Imputed_FC, y = M2_preds, colour = STUDY))+
+  geom_jitter()
 ```
 
 
