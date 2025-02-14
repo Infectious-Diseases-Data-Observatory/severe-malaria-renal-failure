@@ -12,7 +12,8 @@ knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
                       fig.pos = 'H',dev = 'png', dpi = 300)
 
 library(tidyverse)
-library(mgcv)
+# library(mgcv)
+library(brms)
 library(ggplot2)
 library(gridExtra)
 
@@ -72,12 +73,29 @@ table(dat$STUDY)
 dat$STUDY=as.factor(dat$STUDY)
 dat$SITEID=as.factor(dat$SITEID)
 dat$Age_cat=as.factor(dat$Age<5)
+dat$Anaemic=dat$`Hb<5g/dL`
 
 ```
 
 
 
 ## Prognostic models
+
+
+brms 
+
+```{r}
+m2_lactate <- brm(bf(Died ~ s(Lactate, by=Anaemic) + (1|STUDY)),
+          data = dat, 
+          family = bernoulli(), cores = 4, seed = 17,
+          iter = 4000, warmup = 2000, thin = 10, refresh = 1000)
+dat = dat %>% filter(!is.na(Anaemic), !is.na(Lactate))
+dat$M2_preds=colMeans(posterior_epred(m2_lactate,re_formula = NA))
+dat %>% ggplot(aes(x=Lactate, y = M2_preds, colour = STUDY))+  geom_jitter()
+> sm_data_analysis %>% ggplot(aes(x=BUN_Imputed_FC, y = M2_preds, colour = STUDY))+
++     geom_jitter()
+```
+
 
 ```{r lactate_prognostic_models, fig.width=8, fig.height=8}
 
