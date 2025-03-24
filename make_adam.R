@@ -24,12 +24,12 @@ col_ids = c("STUDYID","USUBJID")
 
 ## Dataset 1: baseline parameters (clinical and lab) and outcome (mortality) as binary and time to death
 
-f_path = function(domain, extra=' 2025-03-19',folder='Data/DATA 2025-03-19/'){
+f_path = function(domain, extra=' 2025-03-19',folder='Data/DATA 2025-03-21/'){
   paste0(folder,domain,extra,'.csv')
 } 
 
 # get study names from TS domain
-ts_SM = read_csv(file = f_path('TS',''),na = "\\N")
+ts_SM = read_csv(file = f_path('TS'),na = "\\N")
 unique(ts_SM$STUDYID)
 ts_SM %>% filter(TSPARMCD=='TITLE') %>% select(STUDYID, TSVAL)
 
