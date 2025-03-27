@@ -5,6 +5,7 @@ library(missForest)
 library(doParallel)
 library(tictoc)
 
+RUN_IMPUTE_MODEL = F
 sm_data = readr::read_csv('Data/Renal_Analysis_Data.csv')
 key_cols=c("STUDY","COUNTRY","SITEID","SEX","Age","Died",
            "Heart Rate_beats_min","Height_cm","Mid-Upper Arm Circumference_cm",
@@ -23,5 +24,14 @@ sm_data = as.data.frame(sm_data)
 str(sm_data)
 summary(sm_data)
 registerDoParallel(cores=6)
-tic(); sm_impute = missForest(xmis = sm_data, parallelize = 'forests',ntree = 50); toc();
-save(sm_impute, file = 'RData/imputed_dataset.RData')
+
+f_name = 'RData/imputed_dataset.RData'
+if(RUN_IMPUTE_MODEL){
+  tic(); sm_impute = missForest(xmis = sm_data, parallelize = 'forests',ntree = 50); toc();
+  save(sm_impute, file = f_name)
+} else {
+  load(f_name)
+}
+
+
+x_imp = sm_impute$ximp
