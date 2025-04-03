@@ -158,11 +158,17 @@ lb_SM$EPOCH[lb_SM$LBTEST=='Creatinine' & lb_SM$STUDYID=='AWPDN']='BASELINE'
 # View(lb_SM %>% filter(EPOCH==''))
 lb_SM$LBSTRESN[lb_SM$STUDYID=='NLSSA' & lb_SM$LBTEST=='Creatinine']= NA
 
-ind = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Urea Nitrogen' & lb_SM$LBORRESU=='mg/dL')
+ids_blantyre = unique(dm_SM$USUBJID[dm_SM$SITEID=='Blantyre' & dm_SM$STUDYID=='ZQEVB'])
+ind = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Urea Nitrogen' & lb_SM$LBORRESU=='mg/dL' & lb_SM$USUBJID %in% ids_blantyre)
+ind2 = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Urea Nitrogen' & lb_SM$LBORRESU=='mg/dL' & !lb_SM$USUBJID %in% ids_blantyre)
 median(as.numeric(lb_SM$LBORRES[ind]))
+median(as.numeric(lb_SM$LBORRES[ind2]))
 median(as.numeric(lb_SM$LBSTRESN[ind]))
-# lb_SM$LBSTRESN[ind] = lb_SM$LBORRES[ind]
-# lb_SM$LBSTRESN = as.numeric(lb_SM$LBSTRESN)
+median(as.numeric(lb_SM$LBSTRESN[ind2]))
+
+lb_SM$LBSTRESN[ind] = as.numeric(lb_SM$LBORRES[ind])/0.0555 
+lb_SM$LBSTRESN[ind2] = as.numeric(lb_SM$LBORRES[ind2])
+lb_SM$LBSTRESN = as.numeric(lb_SM$LBSTRESN)
 ## Manual correction of units issue!!!
 lb_SM %>% filter(LBTEST=='Urea Nitrogen') %>%
   mutate(LBORRES = as.numeric(LBORRES)) %>%
