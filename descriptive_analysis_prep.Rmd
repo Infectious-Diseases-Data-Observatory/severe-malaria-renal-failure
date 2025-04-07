@@ -1,0 +1,310 @@
+---
+title: "Renal Analysis Severe Malaria"
+author: "James Watson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
+                      echo = F, include = TRUE, 
+                      fig.width = 8, fig.height = 8,
+                      fig.pos = 'H',dev = 'png', dpi = 300)
+
+
+library(tidygam)
+library(mgcv)
+library(brms)
+library(conflicted)
+library(tidyverse)
+library(readr)
+library(rtables)
+library(RColorBrewer)
+library(grid)
+library(gridExtra)
+#library(worlddatr)
+
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(brms::ar)
+conflicts_prefer(dplyr::collapse)
+conflicts_prefer(dplyr::combine)
+conflicts_prefer(tidyr::extract)
+conflicts_prefer(dplyr::lag)
+conflicts_prefer(brms::s)
+conflicts_prefer(purrr::set_names)
+conflicts_prefer(brms::t2)
+conflicts_prefer(dplyr::group_rows)
+
+binomial_smooth <- function(...) {
+  geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
+}
+```
+
+
+
+Plotting params
+
+```{r}
+sqrt_breaks = c(1,4,9,16,25,36,50,64,81)
+breaks <- 10^(-10:10)
+minor_breaks <- rep(1:9, 21)*(10^rep(-10:10, each=9))
+
+SEsmooth=F
+my_alpha=0.2
+bun_limits = c(1,100)
+crea_limits = c(10,1000)
+
+mortality_threshold = 0.05
+```
+
+
+## Load data
+
+
+```{r load_data}
+sm_data = read_csv('Data/Renal_Analysis_Data.csv')
+sm_data = sm_data%>%arrange(STUDY)
+table(sm_data$STUDY)
+
+sm_data %>% group_by(STUDY) %>% 
+  summarise(median(Time_to_death, na.rm = T))
+# Remove late deaths in TRACT trial
+sm_data$Died[sm_data$STUDY=='TRACT' & sm_data$Time_to_death> (28*24)]=0
+
+sm_data$SITEID=as.factor(sm_data$SITEID)
+sm_data$COUNTRY=as.factor(sm_data$COUNTRY)
+sm_data$STUDY=as.factor(sm_data$STUDY)
+
+sm_data$Lactate = sm_data$`Lactic Acid_mmol_L`
+sm_data = sm_data%>% select(-`Lactic Acid_mmol_L`)
+sm_data$Lactate = ifelse(sm_data$Lactate>50,NA,sm_data$Lactate)
+```
+
+## Variables in dataset
+
+### Hypoglycaemia
+
+```{r}
+sm_data %>% ggplot(aes(x = Age, y = Glucose_mmol_L, colour = Hypoglycaemia))+
+  geom_point()+theme_minimal()+
+  facet_wrap(vars(STUDY))
+```
+
+
+### Hemoglobin-Hematocrit
+
+```{r hb_hct}
+source('hb_data_plotting.R')
+sm_data=hb_hct_impute(sm_data = sm_data)
+```
+
+## Make analysis dataset
+
+```{r maka_analysis_data}
+sm_data_analysis = sm_data %>% 
+  filter(Malaria_Positive, !is.na(Died), !is.na(Creatinine_umol_L) | !is.na(BUN))
+rm(sm_data)
+
+table(sm_data_analysis$STUDY)
+table(!is.na(sm_data_analysis$Creatinine_umol_L))
+table(!is.na(sm_data_analysis$BUN))
+
+sm_data_analysis_both = sm_data_analysis %>% 
+  filter(!is.na(Creatinine_umol_L), !is.na(BUN)) 
+
+print(aggregate(Age ~ STUDY, data = sm_data_analysis, FUN = quantile))
+print(aggregate(RFSTDTC ~ STUDY, data = sm_data_analysis, FUN = function(x) range(x,na.rm = T)))
+print(aggregate(Died ~ STUDY, data = sm_data_analysis, FUN = function(x) round(100*mean(x),1)))
+```
+
+
+Analysis data
+
+```{r analysis_data}
+writeLines(sprintf('Analysis data: there are %s patients from %s studies with at least one baseline creatinine or BUN measurement. %s patients have creatinine; %s patients have BUN; %s patients have both.',
+                   nrow(sm_data_analysis),
+                   length(unique(sm_data_analysis$STUDYID)),
+                   sum(!is.na(sm_data_analysis$Creatinine_umol_L)),
+                   sum(!is.na(sm_data_analysis$BUN)),
+                   sum(!is.na(sm_data_analysis$Creatinine_umol_L) & !is.na(sm_data_analysis$BUN))
+))
+```
+
+
+
+How do the distributions of BUN and creatinine vary across studies in the children?
+
+```{r boxplots}
+sm_data_analysis %>% filter(Weight_kg<30) %>%
+  ggplot(aes(x=STUDY, y=Creatinine_umol_L)) + geom_boxplot()+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))
+
+sm_data_analysis %>% filter(Weight_kg<30) %>%
+  ggplot(aes(x=STUDY, y=BUN)) + geom_boxplot()+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))
+```
+
+
+
+
+```{r creatinine_v_bun, fig.width=12, fig.height=8}
+p1=sm_data_analysis_both %>%
+  ggplot(aes(x=Creatinine_umol_L, y = BUN, colour = STUDY))+
+  geom_point(alpha=0.2)+geom_smooth(se = F)+
+  scale_y_continuous(transform  ='log10') +
+  geom_hline(yintercept = 20)+geom_vline(xintercept = 265)+
+  xlab('Creatinine (umol/L)')+ylab('BUN (mmol/L)')+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks)+#,limits=crea_limits) +
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+#,limits=bun_limits) +
+  annotation_logticks() + theme_bw(base_size = 20)+
+  theme(
+    legend.position = c(0.97, 0.03), 
+    legend.justification = c(1, 0), 
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),
+    legend.margin = margin(6, 6, 6, 6),  
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10))
+
+
+p2=sm_data_analysis_both %>%
+  ggplot(aes(x=(Creatinine_umol_L/BUN), colour = STUDY))+
+  geom_density()+theme_bw(base_size = 20)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))+
+  annotation_logticks(sides='b')+
+  xlab('Creatinine to BUN ratio')+ylab('')+
+  scale_y_discrete(labels = NULL, breaks = NULL)+
+  theme(legend.position = 'none')
+
+grid.arrange(p1,p2,nrow=1)
+```
+
+
+
+BUN versus Creatinine to spot outliers
+
+```{r}
+sm_data_analysis %>% ggplot(aes(x=log2(Creatinine_umol_L) - log2(BUN)))+
+  geom_histogram()+geom_vline(xintercept = c(0.5,6.5))+
+  theme_minimal()
+
+sm_data_analysis = sm_data_analysis %>%
+  mutate(BUN_Creat_ratio = log2(Creatinine_umol_L)-log2(BUN),
+         BUN_Creat_outlier = ifelse(BUN_Creat_ratio<0.5 | BUN_Creat_ratio>6.5, T, F))
+sm_data_analysis %>% ggplot(aes(x=BUN, y = Creatinine_umol_L, color = BUN_Creat_outlier))+
+  geom_point()+scale_x_log10()+scale_y_log10()+
+  theme_minimal()
+table(sm_data_analysis$BUN_Creat_outlier)
+```
+
+
+```{r weight_age, fig.width=12, fig.height=8}
+p1=sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
+  ggplot(aes(x=Age, y = Creatinine_umol_L, colour = STUDY))+
+  geom_jitter(height = 0.05, width = .1, alpha=my_alpha)+
+  ylab('Creatinine (umol/L)')+xlab('Age (years)')+
+  geom_hline(yintercept = 265)+
+  scale_y_continuous(transform  ='log10') + 
+  scale_x_continuous(transform  ='sqrt',breaks = sqrt_breaks) +
+  geom_smooth(se=SEsmooth)+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
+  annotation_logticks(sides='l') +
+  theme_bw(base_size = 15)+
+  theme(legend.position="none")
+
+xx = sm_data_analysis %>% filter(!is.na(Creatinine_umol_L), !is.na(Weight_kg)) 
+writeLines(sprintf('There are %s patients with weight and Creatinine jointly measured', nrow(xx)))
+p2 = xx%>%
+  ggplot(aes(x=Weight_kg, y = Creatinine_umol_L, colour = STUDY))+
+  geom_jitter(height = 0.01, width = .1, alpha=my_alpha)+
+  ylab('Creatinine (umol/L)')+xlab('Weight (kg)')+
+  geom_hline(yintercept = 265)+
+  scale_x_continuous(transform  ='sqrt',breaks = sqrt_breaks) + 
+  geom_smooth(se=SEsmooth)+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
+  annotation_logticks(sides='l') +
+  theme_bw(base_size = 15)+
+  theme(
+    legend.position = c(0.97, 0.03), 
+    legend.justification = c(1, 0),
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),
+    legend.margin = margin(6, 6, 6, 6),  
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10))
+
+p3=sm_data_analysis %>% 
+  ggplot(aes(x=Age, y = BUN, colour = STUDY))+
+  geom_jitter(height = 0.05, width = .1, alpha=my_alpha)+
+  ylab('BUN (mmol/L)')+xlab('Age (years)')+
+  geom_hline(yintercept = 20)+
+  scale_y_continuous(transform='log10') + 
+  scale_x_continuous(transform='sqrt',breaks = sqrt_breaks) +
+  geom_smooth(se=SEsmooth)+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
+  annotation_logticks(sides='l') +
+  theme_bw(base_size = 20)#+theme(legend.position="none")
+
+xx = sm_data_analysis %>% filter(!is.na(BUN), !is.na(Weight_kg)) 
+writeLines(sprintf('There are %s patients with weight and BUN jointly measured', nrow(xx)))
+p4=xx%>%ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
+  geom_jitter(height = 0.03, width = .1, alpha=my_alpha)+
+  ylab('BUN (mmol/L)')+xlab('Weight (kg)')+
+  geom_hline(yintercept = 20)+
+  scale_x_continuous(transform='sqrt',breaks = sqrt_breaks) +
+  geom_smooth(se=SEsmooth)+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
+  annotation_logticks(sides='l') + theme_bw(base_size = 15)+
+  theme(
+    legend.position = c(0.97, 0.03),        # Position the legend inside the plot (bottom-right corner)
+    legend.justification = c(1, 0),       # Justify the legend to the bottom-right
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),  # Optional: adds border to legend
+    legend.margin = margin(6, 6, 6, 6),    # Adjust the margin around the legend if needed
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10)
+  )
+
+grid.arrange(p2,p4,nrow=1)
+
+xx = sm_data_analysis %>%
+  filter(STUDY %in% c('AQUAMAT','SEAQUAMAT','FEAST','TRACT'), !is.na(BUN)) 
+dim(xx)
+xx %>% ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
+  geom_jitter(height = 0.02, width = .02, alpha=my_alpha)+
+  ylab('BUN (mmol/L)')+xlab('Weight (kg)')+
+  geom_hline(yintercept = 20)+
+  scale_y_continuous(transform='log10') +
+  scale_x_continuous(transform='sqrt',breaks = sqrt_breaks,limits=c(4,80)) + 
+  geom_smooth()+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
+  annotation_logticks(sides='l') +
+  theme_bw(base_size = 15)#+theme(legend.position="none")
+```
+
+
+
+
+
+Remove AQ Gambia from analysis data-set as unreliable creatinine values
+
+```{r}
+sm_data_analysis = sm_data_analysis %>% filter(!STUDY=='AQ Gambia')
+```
+
+
+
+
+
+
+
+Save dataset for multiple imputation
+
+```{r}
+readr::write_csv(x = sm_data_analysis, file = 'Data/Analysis_data.csv')
+```
+
+
+
+
+
+
+
+

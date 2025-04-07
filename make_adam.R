@@ -166,9 +166,13 @@ median(as.numeric(lb_SM$LBORRES[ind2]))
 median(as.numeric(lb_SM$LBSTRESN[ind]))
 median(as.numeric(lb_SM$LBSTRESN[ind2]))
 
-lb_SM$LBSTRESN[ind] = as.numeric(lb_SM$LBORRES[ind])/0.0555 
+lb_SM$LBSTRESN[ind] = as.numeric(lb_SM$LBORRES[ind])/0.0555
 lb_SM$LBSTRESN[ind2] = as.numeric(lb_SM$LBORRES[ind2])
 lb_SM$LBSTRESN = as.numeric(lb_SM$LBSTRESN)
+
+ind = which(lb_SM$STUDYID=='ITYCK' & lb_SM$LBTEST=='Glucose')
+lb_SM$LBSTRESN[ind] = lb_SM$LBSTRESN[ind]/18.0182
+
 ## Manual correction of units issue!!!
 lb_SM %>% filter(LBTEST=='Urea Nitrogen') %>%
   mutate(LBORRES = as.numeric(LBORRES)) %>%
@@ -447,11 +451,11 @@ write_csv(smac, file = 'Data/smac.csv')
 # kemri_dat = read_csv('~/Dropbox/Datasets/KEMRI Severe Malaria/1995_2020_severe_malaria_24092024_JW.csv')
 # plot(kemri_dat$ageyr, kemri_dat$weight)
 # kemri_dat$weight[which(kemri_dat$ageyr<6 & kemri_dat$weight>30)]=c(6.7, 17)
-# # mod_outlier = lm(weight~ageyr, data = kemri_dat)
-# # mod_outlier$residuals
+# mod_outlier = lm(weight~ageyr, data = kemri_dat)
+# mod_outlier$residuals
 # kemri_dat$USUBJID = 10^5+as.numeric(kemri_dat$pid)
 # kemri_dat$doa = (as.POSIXct(as_date(kemri_dat$doa, format='%d%b%Y')))
-#
+
 # kemri_dat = kemri_dat %>% group_by(pid) %>%
 #   mutate(
 #     STUDYID='Kilifi',
