@@ -66,7 +66,12 @@ any(duplicated(ds_SM$USUBJID))
 # tv_SM = read_csv('Data/TV 2024-11-08.csv',na = "\\N")
 
 vs_SM = read_csv(f_path('VS'),na = "\\N")
+vs_SM$VSTEST[vs_SM$VSTEST=='Pulse Rate']='Heart Rate'
+vs_SM$VSTEST[vs_SM$VSTEST=='Body Length']='Height'
+
+table(vs_SM$STUDYID, vs_SM$EPOCH, useNA = 'ifany')
 baseline_vs_SM = vs_SM %>% filter(EPOCH %in% c('BASELINE','SCREENING')) %>%
+  filter(VSSTRESN != '') %>%
   arrange(STUDYID, USUBJID, VSTEST) %>%
   group_by(USUBJID, VSTEST) %>% mutate(n=length(USUBJID))
 max(baseline_vs_SM$n)
@@ -76,6 +81,7 @@ baseline_vs_SM_wide = baseline_vs_SM %>%
 
 
 sa_SM = read_csv(f_path('SA'),na = "\\N")
+sa_SM$EPOCH[sa_SM$STUDYID=='MOLFZ']='BASELINE'
 remove_cols = which(apply(sa_SM, 2, function(x) mean(is.na(x)))==1)
 sa_SM = sa_SM[, -remove_cols]
 sa_SM = sa_SM %>% filter(EPOCH %in% c('BASELINE','SCREENING')) %>%
@@ -157,6 +163,11 @@ table(lb_SM$STUDYID, lb_SM$EPOCH, useNA = 'ifany')
 lb_SM$EPOCH[lb_SM$LBTEST=='Creatinine' & lb_SM$STUDYID=='AWPDN']='BASELINE'
 # View(lb_SM %>% filter(EPOCH==''))
 lb_SM$LBSTRESN[lb_SM$STUDYID=='NLSSA' & lb_SM$LBTEST=='Creatinine']= NA
+
+ind = which(lb_SM$LBTEST=='Leukocytes'&lb_SM$STUDYID=='ITYCK'&lb_SM$LBSTRESU=="10^6/L")
+lb_SM$LBSTRESN[ind] = as.numeric(lb_SM$LBSTRESN[ind])/10^3
+lb_SM$LBSTRESU[ind] = "10^9/L"
+
 
 ids_blantyre = unique(dm_SM$USUBJID[dm_SM$SITEID=='Blantyre' & dm_SM$STUDYID=='ZQEVB'])
 ind = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Urea Nitrogen' & lb_SM$LBORRESU=='mg/dL' & lb_SM$USUBJID %in% ids_blantyre)
@@ -247,7 +258,7 @@ baseline_lb_SM_wide$`Creatinine_umol/L`[ind]=baseline_lb_SM_wide$`Creatinine_umo
 
 
 mb_SM = read_csv(f_path('MB'),na = "\\N")
-table(mb_SM$STUDYID, mb_SM$EPOCH)
+table(mb_SM$STUDYID, mb_SM$EPOCH, useNA = 'ifany')
 
 # get HRP2 data
 mb_SM_hrp2 = mb_SM %>%
@@ -261,6 +272,8 @@ mb_SM_hrp2 = mb_SM %>%
 
 
 mb_SM$EPOCH[mb_SM$EPOCH=='' & mb_SM$MBCDSTHR==0]='BASELINE'
+mb_SM$EPOCH[mb_SM$STUDYID=='MOLFZ']='BASELINE'
+
 mb_positive = mb_SM %>% filter(MBTSTDTL=='DETECTION', MBTESTCD %in% c('PFALCIP','PFALCIPA','PFALCIPS','PLSMDM')) %>%
   rename(Malaria_RDT = MBSTRESC) %>% select(USUBJID, STUDYID, Malaria_RDT) %>%
   group_by(USUBJID) %>%
@@ -404,48 +417,59 @@ dat_all_final = dat_all_final %>%
 ind = which(dat_all_final$BUN < dat_all_final$Creatinine_umol_L/100)
 dat_all_final$Creatinine_umol_L[ind]=NA
 dat_all_final$BUN[ind]=NA
+
+
+table(is.na(dat_all_final$Hypoglycaemia) & !is.na(dat_all_final$Glucose_mmol_L))
+dat_all_final = dat_all_final %>%
+  mutate(Hypoglycaemia = case_when(
+    is.na(Hypoglycaemia) & !is.na(Glucose_mmol_L) & Glucose_mmol_L<=2.2 ~ T,
+    is.na(Hypoglycaemia) & !is.na(Glucose_mmol_L) & Glucose_mmol_L>2.2 ~ F,
+    T ~ Hypoglycaemia
+  ),
+  Glucose_mmol_L = ifelse(Glucose_mmol_L>3 & STUDY=='AQUAMAT' & !is.na(Hypoglycaemia) & Hypoglycaemia, NA, Glucose_mmol_L))
+
 write_csv(dat_all_final, file = 'Data/Renal_Analysis_Data.csv')
 
 
 
 
 ### NOT YET CURATED ####
-load('~/Dropbox/MORU/Severe malaria/Pigment_Neutrophils/Malaria_Pigment_Prognosis/RData/SMAC_data.RData')
-myMergedData$USUBJID = (1:nrow(myMergedData))+10^7
-smac = myMergedData %>% group_by(USUBJID) %>%
-  mutate(
-    STUDY='SMAC',
-    Age = AGE/12,
-    SEX = ifelse(SEX==1,'F','M'),
-    Died = OUTCOME,
-    Malaria_Positive=T,
-    SITEID = country_names,
-    COUNTRY = case_when(SITEID=='The Gambia' ~ 'GMB',
-                        SITEID=='Kenya' ~ 'KEN',
-                        SITEID=='Ghana' ~ 'GHA',
-                        SITEID=='Malawi' ~ 'MLW',
-                        SITEID=='Gabon (Lambarene)' ~ 'GBN',
-                        SITEID=='Gabon (Libreville)' ~ 'GBN'
-    ),
-    Weight_kg = as.numeric(WEIGHT),
-    Weight_kg = ifelse(Weight_kg>90, NA, Weight_kg),
-    BCS_tot = sum(c(BMS, BVS, BES), na.rm = T),
-    Coma_Final = ifelse(BCS_tot<=2,1, 0),
-    `Respiratory distress` = ifelse(DEEPBR==1,T,F),
-    para_ul = as.numeric(PARASIT),
-    `Hemoglobin_g/L` = as.numeric(HB),
-    `Respiratory Rate_breaths/min` = as.numeric(RESPRATE),
-    Temperature_C = as.numeric(TEMP),
-    `Base Excess_mmol/L` = as.numeric(BE),
-    `Lactic Acid_mmol/L` = as.numeric(LACTATE),
-    `Glucose_mmol/L` = as.numeric(GLUCOSE),
-    `Hematocrit_%` = as.numeric(HCT)
-  )
-# ind_col = which(colnames(smac) %in% colnames(dat_all))
-# colnames(smac)[ind_col]
-# smac = smac[,ind_col]
-write_csv(smac, file = 'Data/smac.csv')
-
+# load('~/Dropbox/MORU/Severe malaria/Pigment_Neutrophils/Malaria_Pigment_Prognosis/RData/SMAC_data.RData')
+# myMergedData$USUBJID = (1:nrow(myMergedData))+10^7
+# smac = myMergedData %>% group_by(USUBJID) %>%
+#   mutate(
+#     STUDY='SMAC',
+#     Age = AGE/12,
+#     SEX = ifelse(SEX==1,'F','M'),
+#     Died = OUTCOME,
+#     Malaria_Positive=T,
+#     SITEID = country_names,
+#     COUNTRY = case_when(SITEID=='The Gambia' ~ 'GMB',
+#                         SITEID=='Kenya' ~ 'KEN',
+#                         SITEID=='Ghana' ~ 'GHA',
+#                         SITEID=='Malawi' ~ 'MLW',
+#                         SITEID=='Gabon (Lambarene)' ~ 'GBN',
+#                         SITEID=='Gabon (Libreville)' ~ 'GBN'
+#     ),
+#     Weight_kg = as.numeric(WEIGHT),
+#     Weight_kg = ifelse(Weight_kg>90, NA, Weight_kg),
+#     BCS_tot = sum(c(BMS, BVS, BES), na.rm = T),
+#     Coma_Final = ifelse(BCS_tot<=2,1, 0),
+#     `Respiratory distress` = ifelse(DEEPBR==1,T,F),
+#     para_ul = as.numeric(PARASIT),
+#     `Hemoglobin_g/L` = as.numeric(HB),
+#     `Respiratory Rate_breaths/min` = as.numeric(RESPRATE),
+#     Temperature_C = as.numeric(TEMP),
+#     `Base Excess_mmol/L` = as.numeric(BE),
+#     `Lactic Acid_mmol/L` = as.numeric(LACTATE),
+#     `Glucose_mmol/L` = as.numeric(GLUCOSE),
+#     `Hematocrit_%` = as.numeric(HCT)
+#   )
+# # ind_col = which(colnames(smac) %in% colnames(dat_all))
+# # colnames(smac)[ind_col]
+# # smac = smac[,ind_col]
+# write_csv(smac, file = 'Data/smac.csv')
+# 
 
 # ### NOT YET CURATED ####
 # kemri_dat = read_csv('~/Dropbox/Datasets/KEMRI Severe Malaria/1995_2020_severe_malaria_24092024_JW.csv')

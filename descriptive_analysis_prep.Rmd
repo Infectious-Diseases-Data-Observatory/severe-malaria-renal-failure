@@ -22,6 +22,7 @@ library(rtables)
 library(RColorBrewer)
 library(grid)
 library(gridExtra)
+library(naniar)
 #library(worlddatr)
 
 conflicts_prefer(dplyr::filter)
@@ -65,7 +66,31 @@ mortality_threshold = 0.05
 sm_data = read_csv('Data/Renal_Analysis_Data.csv')
 sm_data = sm_data%>%arrange(STUDY)
 table(sm_data$STUDY)
+```
 
+Visualise missing data
+
+```{r missing_data}
+cols_check = c("RFSTDTC","SITEID","ARM","COUNTRY","SEX","Age","Died",
+               "Time_to_death","Capillary Refill Time_sec","Head Circumference_cm",
+               "Heart Rate_beats_min","Height_cm","Mid-Upper Arm Circumference_cm",
+               "Respiratory Rate_breaths_min",
+               "Systolic Blood Pressure_mmHg","Temperature_C",
+               "Weight_kg","Oxygen Saturation_%","Diastolic Blood Pressure_mmHg",
+               "Coma_Final","Respiratory distress","Shock",
+               "Hypoglycaemia","Seizure","Jaundice",
+               "Blood in urine","Anemia","Hyperparasitaemia",
+               "Anuria","GCS_tot","BCS_tot","para_ul","Malaria_RDT","PfHRP2_ng_ml",
+               "Malaria_Positive","Glucose_mmol_L","Hemoglobin_g_L",
+               "Lactic Acid_mmol_L","Base Excess_mmol_L","Creatinine_umol_L",
+               "Hematocrit_%","Leukocytes_10_9_L","Platelets_10_9_L",
+               "Urea Nitrogen_mmol_L")
+vis_miss(sm_data %>% select(all_of(cols_check)),warn_large_data = F)
+```
+
+
+
+```{r}
 sm_data %>% group_by(STUDY) %>% 
   summarise(median(Time_to_death, na.rm = T))
 # Remove late deaths in TRACT trial
@@ -88,6 +113,8 @@ sm_data$Lactate = ifelse(sm_data$Lactate>50,NA,sm_data$Lactate)
 sm_data %>% ggplot(aes(x = Age, y = Glucose_mmol_L, colour = Hypoglycaemia))+
   geom_point()+theme_minimal()+
   facet_wrap(vars(STUDY))
+
+
 ```
 
 
