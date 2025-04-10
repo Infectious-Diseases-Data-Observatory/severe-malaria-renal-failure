@@ -64,7 +64,7 @@ mortality_threshold = 0.05
 
 ```{r load_data}
 sm_data = read_csv('Data/Renal_Analysis_Data.csv')
-sm_data = sm_data%>%arrange(STUDY)
+sm_data = sm_data%>%arrange(STUDY) %>% mutate(Died_28D = ifelse(`Died within 28 days`=='Yes',1,0))
 table(sm_data$STUDY)
 ```
 
@@ -93,8 +93,6 @@ vis_miss(sm_data %>% select(all_of(cols_check)),warn_large_data = F)
 ```{r}
 sm_data %>% group_by(STUDY) %>% 
   summarise(median(Time_to_death, na.rm = T))
-# Remove late deaths in TRACT trial
-sm_data$Died[sm_data$STUDY=='TRACT' & sm_data$Time_to_death> (28*24)]=0
 
 sm_data$SITEID=as.factor(sm_data$SITEID)
 sm_data$COUNTRY=as.factor(sm_data$COUNTRY)
@@ -107,14 +105,31 @@ sm_data$Lactate = ifelse(sm_data$Lactate>50,NA,sm_data$Lactate)
 
 ## Variables in dataset
 
+### High creatinines in TRACT
+
+```{r }
+tract = sm_data %>% filter(STUDY=='TRACT')
+table(as.character(tract$SITEID))
+
+tract_creat_high = sm_data %>% filter(STUDY=='TRACT', !is.na(Creatinine_umol_L) ,Creatinine_umol_L>265)
+table(as.character(tract_creat_high$SITEID))
+ind_rm = which(apply(tract_creat_high,2,FUN = function(x) mean(is.na(x))==1))
+tract_creat_high = tract_creat_high[, -ind_rm]
+
+tract_creat_high %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, colour = `Died within 28 days`))+geom_point()+ scale_y_log10()+scale_x_log10()+theme_minimal()
+table(tract_creat_high$`Died within 28 days`)
+
+sm_data %>% filter(STUDY=='TRACT') %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, colour = `Died within 28 days`))+geom_point()+ scale_y_log10()+scale_x_log10()+theme_minimal()+geom_vline(xintercept = 265)
+```
+
+
+
 ### Hypoglycaemia
 
 ```{r}
 sm_data %>% ggplot(aes(x = Age, y = Glucose_mmol_L, colour = Hypoglycaemia))+
   geom_point()+theme_minimal()+
   facet_wrap(vars(STUDY))
-
-
 ```
 
 
@@ -129,17 +144,17 @@ sm_data=hb_hct_impute(sm_data = sm_data)
 
 ```{r maka_analysis_data}
 sm_data_analysis = sm_data %>% 
-  filter(Malaria_Positive, !is.na(Died), !is.na(Creatinine_umol_L) | !is.na(BUN))
-rm(sm_data)
+  mutate(INCLUDE_CC_ANALYSIS = Malaria_Positive & !is.na(Died) & (!is.na(Creatinine_umol_L) | !is.na(BUN)))
 
-table(sm_data_analysis$STUDY)
+
+table(sm_data_analysis$STUDY, sm_data_analysis$INCLUDE_CC_ANALYSIS)
+table(sm_data_analysis$STUDY, sm_data_analysis$Malaria_Positive,useNA = 'ifany')
+
 table(!is.na(sm_data_analysis$Creatinine_umol_L))
 table(!is.na(sm_data_analysis$BUN))
 
-sm_data_analysis_both = sm_data_analysis %>% 
-  filter(!is.na(Creatinine_umol_L), !is.na(BUN)) 
 
-print(aggregate(Age ~ STUDY, data = sm_data_analysis, FUN = quantile))
+print(aggregate(Age ~ STUDY+INCLUDE_CC_ANALYSIS, data = sm_data_analysis, FUN = quantile))
 print(aggregate(RFSTDTC ~ STUDY, data = sm_data_analysis, FUN = function(x) range(x,na.rm = T)))
 print(aggregate(Died ~ STUDY, data = sm_data_analysis, FUN = function(x) round(100*mean(x),1)))
 ```
@@ -158,14 +173,23 @@ writeLines(sprintf('Analysis data: there are %s patients from %s studies with at
 ```
 
 
+### Outlier detection for Creatinine and BUN
+
+```{r}
+sm_data_analysis %>%
+  ggplot(aes(x=Creatinine_umol_L, colour = STUDY))+
+  geom_histogram()+scale_x_log10()
+```
+
+
 
 How do the distributions of BUN and creatinine vary across studies in the children?
 
 ```{r boxplots}
 sm_data_analysis %>% filter(Weight_kg<30) %>%
   ggplot(aes(x=STUDY, y=Creatinine_umol_L)) + geom_boxplot()+
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))
-
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 sm_data_analysis %>% filter(Weight_kg<30) %>%
   ggplot(aes(x=STUDY, y=BUN)) + geom_boxplot()+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))
@@ -175,14 +199,13 @@ sm_data_analysis %>% filter(Weight_kg<30) %>%
 
 
 ```{r creatinine_v_bun, fig.width=12, fig.height=8}
-p1=sm_data_analysis_both %>%
+p1=sm_data %>%
   ggplot(aes(x=Creatinine_umol_L, y = BUN, colour = STUDY))+
-  geom_point(alpha=0.2)+geom_smooth(se = F)+
-  scale_y_continuous(transform  ='log10') +
+  geom_point(alpha=0.5)+geom_smooth(se = F)+
   geom_hline(yintercept = 20)+geom_vline(xintercept = 265)+
   xlab('Creatinine (umol/L)')+ylab('BUN (mmol/L)')+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks)+#,limits=crea_limits) +
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+#,limits=bun_limits) +
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks)+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+
   annotation_logticks() + theme_bw(base_size = 20)+
   theme(
     legend.position = c(0.97, 0.03), 
@@ -193,7 +216,7 @@ p1=sm_data_analysis_both %>%
     legend.title = element_text(size = 10))
 
 
-p2=sm_data_analysis_both %>%
+p2=sm_data %>%
   ggplot(aes(x=(Creatinine_umol_L/BUN), colour = STUDY))+
   geom_density()+theme_bw(base_size = 20)+
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))+
@@ -221,6 +244,8 @@ sm_data_analysis %>% ggplot(aes(x=BUN, y = Creatinine_umol_L, color = BUN_Creat_
   geom_point()+scale_x_log10()+scale_y_log10()+
   theme_minimal()
 table(sm_data_analysis$BUN_Creat_outlier)
+
+sm_data_analysis = sm_data_analysis %>% filter(is.na(BUN_Creat_outlier) | !BUN_Creat_outlier)
 ```
 
 
@@ -291,10 +316,9 @@ p4=xx%>%ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
 
 grid.arrange(p2,p4,nrow=1)
 
-xx = sm_data_analysis %>%
-  filter(STUDY %in% c('AQUAMAT','SEAQUAMAT','FEAST','TRACT'), !is.na(BUN)) 
-dim(xx)
-xx %>% ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
+sm_data_analysis %>%
+  filter(STUDY %in% c('AQUAMAT','SEAQUAMAT','FEAST','TRACT'), !is.na(BUN)) %>%
+  ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
   geom_jitter(height = 0.02, width = .02, alpha=my_alpha)+
   ylab('BUN (mmol/L)')+xlab('Weight (kg)')+
   geom_hline(yintercept = 20)+

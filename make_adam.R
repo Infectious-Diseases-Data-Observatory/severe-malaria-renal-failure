@@ -82,6 +82,10 @@ baseline_vs_SM_wide = baseline_vs_SM %>%
 
 sa_SM = read_csv(f_path('SA'),na = "\\N")
 sa_SM$EPOCH[sa_SM$STUDYID=='MOLFZ']='BASELINE'
+sa_SM$EPOCH[which(sa_SM$STUDYID=='JTGNG' & sa_SM$SADECOD=='Coma')]='BASELINE'
+sa_SM$EPOCH[which(sa_SM$STUDYID=='JTGNG' & sa_SM$SATERM=='Cerebral malaria')]='BASELINE'
+sa_SM$SADECOD[which(sa_SM$STUDYID=='JTGNG' & sa_SM$SATERM=='Cerebral malaria')]='Coma'
+
 remove_cols = which(apply(sa_SM, 2, function(x) mean(is.na(x)))==1)
 sa_SM = sa_SM[, -remove_cols]
 sa_SM = sa_SM %>% filter(EPOCH %in% c('BASELINE','SCREENING')) %>%
@@ -90,7 +94,12 @@ sa_SM = sa_SM %>% filter(EPOCH %in% c('BASELINE','SCREENING')) %>%
 
 table(sa_SM$SADECOD)
 sort(table(sa_SM$SATERM[sa_SM$SADECOD=='']))
+sa_SM$SADECOD[grep(pattern = 'prostra',x = sa_SM$SATERM,ignore.case = T)]='Prostration'
+
+sa_SM$SADECOD[grep(pattern = 'sickle cell',x = sa_SM$SATERM,ignore.case = T)]='Sickling disorder due to hemoglobin S'
 sa_SM$SADECOD[grep(pattern = 'black water|blackwater|haemoglobinurea',x = sa_SM$SATERM,ignore.case = T)]='Blood in urine'
+sa_SM$SADECOD[grep(pattern = 'COCA-COLA',x = sa_SM$SATERM,ignore.case = T)]='Blood in urine'
+sa_SM$SADECOD[grep(pattern = 'DARK URINE SYNDROME|HAEMOLYTIC ANAEMIA|HEAMOLYTIC ANAEMIA',x = sa_SM$SATERM,ignore.case = T)]='Blood in urine'
 sa_SM$SADECOD[grep(pattern = 'hypoglyc',x = sa_SM$SATERM,ignore.case = T)]='Hypoglycaemia'
 sa_SM$SADECOD[grep(pattern = 'hyperpara',x = sa_SM$SATERM,ignore.case = T)]='Hyperparasitaemia'
 sa_SM$SADECOD[grep(pattern = 'acido',x = sa_SM$SATERM,ignore.case = T)]='Respiratory distress'
@@ -98,8 +107,15 @@ sa_SM$SADECOD[grep(pattern = 'kussmaul',x = sa_SM$SATERM,ignore.case = T)]='Resp
 sa_SM$SADECOD[grep(pattern = 'respiratory distress',x = sa_SM$SATERM,ignore.case = T)]='Respiratory distress'
 sa_SM$SADECOD[sa_SM$SADECOD=='Difficulty breathing']='Respiratory distress'
 sa_SM$SADECOD[grep(pattern = 'anaemia|anemia',x = sa_SM$SATERM,ignore.case = T)]='Anemia'
-sa_SM = sa_SM %>% filter(SAPRESP=='Y', SADECOD != '')
 
+select_cols = c("Respiratory distress","Fever","Vomiting","Diarrhea","Blood in urine",
+                "Jaundice","Seizure","Epilepsy","Coma","Anuria","Anemia","Cyanosis",
+                "Edema","Shock","Human immunodeficiency virus infection","Meningitis",
+                "Prostration","Sepsis","Hypoglycaemia","Bleeding",
+                "Sickling disorder due to hemoglobin S","Dehydration","Splenomegaly",
+                "Hyperparasitaemia")
+sa_SM = sa_SM %>% filter(#SAPRESP=='Y',
+  SADECOD %in% select_cols)
 baseline_sa_SM_wide = sa_SM %>%
   arrange(STUDYID, USUBJID, SADECOD) %>%
   group_by(USUBJID, SADECOD) %>% mutate(n=length(USUBJID)) %>%
@@ -113,6 +129,7 @@ remove_cols = which(apply(rs_SM, 2, function(x) mean(is.na(x)))==1)
 rs_SM$RSTEST = tolower(rs_SM$RSTEST)
 unique(rs_SM$RSTEST)
 
+rs_SM$EPOCH[which(rs_SM$STUDYID=='FSOUE' & rs_SM$RSTEST=='bcs01-total score')]='BASELINE'
 bcs_cols = c('bcs01-best eye response','bcs01-motor response','bcs01-verbal response')
 gcs_cols = c('gcs01-best eye response','gcs01-motor response','gcs01-verbal response')
 
@@ -162,16 +179,23 @@ lb_SM = lb_SM[, -remove_cols]
 table(lb_SM$STUDYID, lb_SM$EPOCH, useNA = 'ifany')
 lb_SM$EPOCH[lb_SM$LBTEST=='Creatinine' & lb_SM$STUDYID=='AWPDN']='BASELINE'
 # View(lb_SM %>% filter(EPOCH==''))
-lb_SM$LBSTRESN[lb_SM$STUDYID=='NLSSA' & lb_SM$LBTEST=='Creatinine']= NA
+# lb_SM$LBSTRESN[lb_SM$STUDYID=='NLSSA' & lb_SM$LBTEST=='Creatinine']= NA
 
+## manual corrections
 ind = which(lb_SM$LBTEST=='Leukocytes'&lb_SM$STUDYID=='ITYCK'&lb_SM$LBSTRESU=="10^6/L")
 lb_SM$LBSTRESN[ind] = as.numeric(lb_SM$LBSTRESN[ind])/10^3
 lb_SM$LBSTRESU[ind] = "10^9/L"
 
+ind = which(lb_SM$LBTEST=='Urea'&lb_SM$STUDYID=='ITYCK')
+lb_SM$LBTEST[ind] = 'Urea Nitrogen'
+lb_SM$LBSTRESU[ind] = 'mmol/L'
 
+## manual corrections
 ids_blantyre = unique(dm_SM$USUBJID[dm_SM$SITEID=='Blantyre' & dm_SM$STUDYID=='ZQEVB'])
-ind = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Urea Nitrogen' & lb_SM$LBORRESU=='mg/dL' & lb_SM$USUBJID %in% ids_blantyre)
-ind2 = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Urea Nitrogen' & lb_SM$LBORRESU=='mg/dL' & !lb_SM$USUBJID %in% ids_blantyre)
+ind = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Urea Nitrogen' &
+              lb_SM$LBORRESU=='mg/dL' & lb_SM$USUBJID %in% ids_blantyre)
+ind2 = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Urea Nitrogen' &
+               lb_SM$LBORRESU=='mg/dL' & !lb_SM$USUBJID %in% ids_blantyre)
 median(as.numeric(lb_SM$LBORRES[ind]))
 median(as.numeric(lb_SM$LBORRES[ind2]))
 median(as.numeric(lb_SM$LBSTRESN[ind]))
@@ -212,14 +236,27 @@ lb_SM$LBSTRESN[lb_SM$LBTEST=='Creatinine' & lb_SM$LBSTRESN > 14*88]=NA
 
 unique(lb_SM$EPOCH)
 xx = lb_SM %>% filter(is.na(EPOCH) | EPOCH=='')
-table(xx$STUDYID)
-# View(xx %>% filter(LBTEST %in% c('Creatinine','Urea Nitrogen')))
+table(xx$STUDYID, xx$LBTEST)
 
 unique(lb_SM$LBTEST)
-key_baseline_vars = c('Hematocrit','Hemoglobin',"Base Excess","Lactic Acid",
-                      "Glucose","Platelets","Creatinine","Leukocytes","Urea Nitrogen")
+ind = which(lb_SM$STUDYID=='HRLGX' & lb_SM$LBTEST=='Lactic Acid' & is.na(lb_SM$LBSTRESN))
+lb_SM$LBSTRESN[ind]=lb_SM$LBORRES[ind]
+
+ind = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Creatinine' & is.na(lb_SM$LBSTRESN) & lb_SM$LBSTRESU=='umol/L')
+lb_SM$LBSTRESN[ind]=lb_SM$LBORRES[ind]
+
+ind = which(lb_SM$LBTEST=='pH' & is.na(lb_SM$LBSTRESN))
+lb_SM$LBSTRESN[ind]=lb_SM$LBORRES[ind]
+
+ind = which(lb_SM$LBTEST=='Carbon Dioxide' & is.na(lb_SM$LBSTRESN) & lb_SM$STUDYID=='JTGNG')
+lb_SM$LBSTRESN[ind]=lb_SM$LBORRES[ind]
+
+lb_SM$LBSTRESN = as.numeric(lb_SM$LBSTRESN)
+
+# key_baseline_vars = c('Hematocrit','Hemoglobin',"Base Excess","Lactic Acid",
+                      # "Glucose","Platelets","Creatinine","Leukocytes","Urea Nitrogen")
 baseline_lb_SM = lb_SM %>% filter(EPOCH %in% c('BASELINE','SCREENING'),
-                                  LBTEST %in% key_baseline_vars,
+                                  # LBTEST %in% key_baseline_vars,
                                   !LBSPEC %in% c('CSF','CEREBROSPINAL FLUID')) %>%
   arrange(STUDYID, USUBJID, LBTEST) %>%
   group_by(USUBJID, STUDYID, LBTEST) %>%
@@ -238,11 +275,11 @@ xx=baseline_lb_SM %>% filter(n>1) %>% arrange(USUBJID)
 unique(xx$LBTEST)
 # View(xx %>% filter(LBTEST=='Creatinine'))
 baseline_lb_SM %>% filter(LBTEST=='Creatinine') %>%
-  ggplot(aes(x=LBSTRESN, color=LBSTRESU)) + geom_histogram()+
+  ggplot(aes(x=as.numeric(LBSTRESN), color=LBSTRESU)) + geom_histogram()+
   scale_x_log10()
 baseline_lb_SM$LBSTRESU[baseline_lb_SM$LBTEST=='Creatinine'&baseline_lb_SM$LBSTRESU=='mmol/L']='umol/L'
 ind = which(baseline_lb_SM$LBTEST=='Creatinine'&baseline_lb_SM$STUDYID=='ITYCK' & baseline_lb_SM$LBSTRESN<10)
-baseline_lb_SM$LBSTRESN[ind] = baseline_lb_SM$LBSTRESN[ind]*88.4
+baseline_lb_SM$LBSTRESN[ind] = as.numeric(baseline_lb_SM$LBSTRESN[ind])*88.4
 
 baseline_lb_SM_wide = baseline_lb_SM %>%
   pivot_wider(id_cols = c(USUBJID, STUDYID),
@@ -329,8 +366,7 @@ dat_all = dat_all %>% select(-Time_to_death.x, -Time_to_death.y)
 dat_all$Time_to_death[dat_all$Time_to_death<0]=NA
 
 dat_all = merge(dat_all, baseline_vs_SM_wide, by = col_ids, all = T)
-dat_all = merge(dat_all, clinical_baseline[, c(col_ids,'Coma_Final',"Respiratory distress",'Shock','Hypoglycaemia','Seizure',
-                                               'Jaundice','Blood in urine','Anemia','Hyperparasitaemia','Anuria','GCS_tot','BCS_tot')], by = col_ids, all = T)
+dat_all = merge(dat_all, clinical_baseline, by = col_ids, all = T)
 dat_all = merge(dat_all, mb_SM_para, by = col_ids, all = T)
 dat_all = merge(dat_all, baseline_lb_SM_wide, by = col_ids, all = T)
 
@@ -418,6 +454,9 @@ ind = which(dat_all_final$BUN < dat_all_final$Creatinine_umol_L/100)
 dat_all_final$Creatinine_umol_L[ind]=NA
 dat_all_final$BUN[ind]=NA
 
+# Manual correction time to death in AQUAMAT
+ind = which(dat_all_final$Time_to_death > 8000 & dat_all_final$STUDY=='AQUAMAT')
+dat_all_final$Time_to_death[ind]=10*24
 
 table(is.na(dat_all_final$Hypoglycaemia) & !is.na(dat_all_final$Glucose_mmol_L))
 dat_all_final = dat_all_final %>%
@@ -426,7 +465,9 @@ dat_all_final = dat_all_final %>%
     is.na(Hypoglycaemia) & !is.na(Glucose_mmol_L) & Glucose_mmol_L>2.2 ~ F,
     T ~ Hypoglycaemia
   ),
-  Glucose_mmol_L = ifelse(Glucose_mmol_L>3 & STUDY=='AQUAMAT' & !is.na(Hypoglycaemia) & Hypoglycaemia, NA, Glucose_mmol_L))
+  Glucose_mmol_L = ifelse(Glucose_mmol_L>3 & STUDY=='AQUAMAT' & !is.na(Hypoglycaemia) & Hypoglycaemia, NA, Glucose_mmol_L),
+  `Died within 28 days` = Died & (is.na(Time_to_death) | Time_to_death < (28*24)),
+  `Died within 28 days` = ifelse(`Died within 28 days`, 'Yes', 'No'))
 
 write_csv(dat_all_final, file = 'Data/Renal_Analysis_Data.csv')
 
@@ -469,7 +510,7 @@ write_csv(dat_all_final, file = 'Data/Renal_Analysis_Data.csv')
 # # colnames(smac)[ind_col]
 # # smac = smac[,ind_col]
 # write_csv(smac, file = 'Data/smac.csv')
-# 
+#
 
 # ### NOT YET CURATED ####
 # kemri_dat = read_csv('~/Dropbox/Datasets/KEMRI Severe Malaria/1995_2020_severe_malaria_24092024_JW.csv')
