@@ -23,6 +23,7 @@ library(RColorBrewer)
 library(grid)
 library(gridExtra)
 library(naniar)
+library(gtools)
 #library(worlddatr)
 
 conflicts_prefer(dplyr::filter)
@@ -35,6 +36,9 @@ conflicts_prefer(brms::s)
 conflicts_prefer(purrr::set_names)
 conflicts_prefer(brms::t2)
 conflicts_prefer(dplyr::group_rows)
+conflicted::conflicts_prefer(brms::ddirichlet)
+conflicted::conflicts_prefer(brms::rdirichlet)
+conflicted::conflicts_prefer(mgcv::scat)
 
 binomial_smooth <- function(...) {
   geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
@@ -68,10 +72,12 @@ sm_data_analysis = sm_data_analysis %>% mutate(
   Coma = ifelse(Coma_Final==1,'Yes','No')
 )
 sm_data_analysis = sm_data_analysis %>%
-  mutate(Weight_category = as.factor(Weight_category),
-         COUNTRY=as.factor(COUNTRY),
-         SITE_STUDY=paste(SITEID, STUDY,sep = '_'),
-         SITE_STUDY = as.factor(SITE_STUDY))
+  mutate(
+    Coma = as.factor(Coma),
+    Weight_category = as.factor(Weight_category),
+    COUNTRY=as.factor(COUNTRY),
+    SITE_STUDY=paste(SITEID, STUDY,sep = '_'),
+    SITE_STUDY = as.factor(SITE_STUDY))
 
 cols_check = c("RFSTDTC","SITEID","ARM","COUNTRY","SEX","Age","Died",
                "Time_to_death","Capillary Refill Time_sec","Head Circumference_cm",
@@ -106,25 +112,57 @@ sm_both %>% ggplot(aes(x=BUN, y=Creatinine_umol_L/BUN, colour = STUDY))+
 ```
 
 
+Imputation of Creatinine and BUN from each other
+
+```{r imputation_BUN_Creatinine}
+mod_bun_impute = gam(log10(BUN) ~ s(log10(Creatinine_umol_L)) + s(SITE_STUDY, bs='re') + s(sqrt(Weight_kg)), data = sm_data_analysis)
+summary(mod_bun_impute)
+sm_data_analysis$BUN_pred = 10^predict(mod_bun_impute, newdata = sm_data_analysis)
+sm_data_analysis$BUN_imputed = ifelse(is.na(sm_data_analysis$BUN), 
+                                      sm_data_analysis$BUN_pred,
+                                      sm_data_analysis$BUN)
+
+mod_creat_impute = gam(log10(Creatinine_umol_L) ~ s(log10(BUN)) + s(SITE_STUDY, bs='re') + s(sqrt(Weight_kg)), data = sm_data_analysis)
+summary(mod_creat_impute)
+sm_data_analysis$Creatinine_pred = 10^predict(mod_creat_impute, newdata = sm_data_analysis)
+sm_data_analysis$Creatinine_imputed = ifelse(is.na(sm_data_analysis$Creatinine_umol_L), 
+                                             sm_data_analysis$Creatinine_pred,
+                                             sm_data_analysis$Creatinine_umol_L)
+
+table(is.na(sm_data_analysis$Creatinine_imputed), is.na(sm_data_analysis$BUN_imputed))
+```
+
 
 ## Mortality models
 
 ### Non parametric
 
-chatgpt version
+make analysis set with imputed values
+
+```{r}
+sm_data_analysis_imp = sm_data_analysis %>% 
+  filter(!is.na(BUN_imputed), !is.na(Weight_category), !is.na(Coma),
+         INCLUDE_CC_ANALYSIS)
+
+# Bin BUN into 4 groups
+bun_cuts = c(.5, 5, 10, 20, 200)
+sm_data_analysis_imp <- sm_data_analysis_imp %>%
+  mutate(BUN_groups = cut(BUN, breaks = bun_cuts,include.lowest = T))  
+levels(sm_data_analysis_imp$BUN_groups)=c("<5","(5,10]","(10,20]",">20")
+
+
+creat_cuts = c(10,65, 130, 265, 2000)
+sm_data_analysis_imp <- sm_data_analysis_imp %>%
+  mutate(Creat_groups = cut(Creatinine_umol_L, breaks = creat_cuts,include.lowest = T))  
+levels(sm_data_analysis_imp$Creat_groups)=c("<65","(65,130]","(130,265]",">265")
+```
+
+
+Using only measured BUN data
 
 ```{r bun_groups_mortality}
-sm_dat_bun = sm_data_analysis %>% 
-  filter(!is.na(BUN), !is.na(Weight_category), 
-         INCLUDE_CC_ANALYSIS) 
-# Bin BUN into quantiles (e.g., 5 groups)
-bun_cuts = c(.5, 5, 10, 20, 200)
-sm_dat_bun <- sm_dat_bun %>%
-  mutate(BUN_groups = cut(BUN, breaks = bun_cuts,include.lowest = T))  
-levels(sm_dat_bun$BUN_groups)=c("<5","(5,10]","(10,20]",">20")
-
 # Summarize by BUN quantile and Coma
-summary_df <- sm_dat_bun %>% filter(!is.na(Coma_Final)) %>%
+summary_df <- sm_data_analysis_imp %>% filter(!is.na(BUN)) %>%
   group_by(Coma, BUN_groups, Weight_category) %>%
   summarise(
     mortality = mean(Died),
@@ -151,19 +189,74 @@ summary_df %>% ggplot(aes(x = BUN_groups, y = mortality, group = Coma, colour = 
 ```
 
 
+Using the imputed BUN 
+
+```{r bun_imputed_groups_mortality}
+# Summarize by BUN quantile and Coma
+summary_df <- sm_data_analysis_imp %>% 
+  group_by(Coma, BUN_groups, Weight_category) %>%
+  summarise(
+    mortality = mean(Died),
+    n = n(),
+    se = sqrt(mortality * (1 - mortality) / n),
+    lower = 100*(mortality - 1.96 * se),
+    upper = 100*(mortality + 1.96 * se),
+    mortality = 100*mortality,
+    .groups = "drop"
+  )
+
+# Plot
+summary_df %>% ggplot(aes(x = BUN_groups, y = mortality, group = Coma, colour = Coma)) +
+  geom_point(aes(size = n), position = position_dodge(width = 0.4)) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2,
+                position = position_dodge(width = 0.4)) +
+  labs(
+    x = "Blood urea nitrogen (mmol/L)",
+    y = "Mortality (%)",
+    size = "Number of Patients",
+    title = "Mortality by urea nitrogen level, coma status, and weight"
+  ) + geom_hline(yintercept = 100*mortality_threshold)+
+  theme_minimal()+facet_wrap(vars(Weight_category))
+```
+
+
+using the measured creatinine
 
 ```{r creat_groups_mortality}
-sm_dat_creat = sm_data_analysis %>% 
-  filter(!is.na(Creatinine_umol_L), !is.na(Weight_category),
-         !is.na(Died_28D),!is.na(Coma),
-         INCLUDE_CC_ANALYSIS)
-creat_cuts = c(10,65, 130, 265, 2000)
-sm_dat_creat <- sm_dat_creat %>%
-  mutate(Creat_groups = cut(Creatinine_umol_L, breaks = creat_cuts,include.lowest = T))  
-levels(sm_dat_creat$Creat_groups)=c("<65","(65,130]","(130,265]",">265")
-
 # Summarize by Creatinine quantile and Coma
-summary_df <- sm_dat_creat %>% filter(!is.na(Coma)) %>%
+summary_df <- sm_data_analysis_imp %>% filter(!is.na(Creatinine_umol_L)) %>%
+  group_by(Creat_groups, Coma, Weight_category) %>%
+  summarise(
+    mortality = mean(Died),
+    deaths = sum(Died),
+    n = n(),
+    se = sqrt(mortality * (1 - mortality) / n),
+    lower = 100*(mortality - 1.96 * se),
+    upper = 100*(mortality + 1.96 * se),
+    mortality = 100*mortality,
+    .groups = "drop"
+  )
+
+# Plot
+summary_df %>% ggplot(aes(x = Creat_groups, y = mortality, group = Coma, colour = Coma)) +
+  geom_point(aes(size = n), position = position_dodge(width = 0.4)) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2,
+                position = position_dodge(width = 0.4)) +
+  labs(
+    x = "Creatinine (umol/L)",
+    y = "Mortality (%)",
+    size = "Number of Patients",
+    title = "Mortality by creatinine level, coma status, and weight"
+  ) + geom_hline(yintercept = 100*mortality_threshold)+
+  theme_minimal()+facet_wrap(vars(Weight_category))
+sum(summary_df$n)
+```
+
+
+using the measured/imputed creatinine
+
+```{r creat_imputed_groups_mortality}
+summary_df <- sm_data_analysis_imp %>% 
   group_by(Creat_groups, Coma, Weight_category) %>%
   summarise(
     mortality = mean(Died),
@@ -190,345 +283,218 @@ summary_df %>% ggplot(aes(x = Creat_groups, y = mortality, group = Coma, colour 
   theme_minimal()+facet_wrap(vars(Weight_category))
 ```
 
-
 ### Parameteric models
 
+#### Individual studies
 
-```{r mortality_models, fig.width=12, fig.height=8}
-### ************** Creatinine model **************
-table(sm_dat_creat$SITE_STUDY,sm_dat_creat$`Died within 28 days`)
-table(sm_dat_creat$SITEID)
-mean(sm_dat_creat$`Died within 28 days`=='Yes')
-table(sm_dat_creat$Weight_category)
+```{r individual_study_bun_creat_mortality}
+sm_data_analysis_imp %>% 
+  group_by(STUDY) %>%
+  mutate(n_deaths = sum(Died_28D)) %>% 
+  filter(n_deaths>5) %>% ungroup() %>%
+  ggplot(aes(x=BUN_imputed, y=Died_28D))+
+  geom_point(shape='+', aes(colour = `Died within 28 days`))+
+  scale_x_log10(breaks=breaks, minor_breaks=minor_breaks)+
+  ylab('Died')+xlab('Blood urea nitrogen (mmol/L)')+
+  geom_hline(yintercept = mortality_threshold)+
+  geom_smooth(
+    method="gam",
+    method.args=list(family="binomial"))+
+  theme_minimal()+ 
+  facet_wrap(vars(STUDY))
 
-mod1 <- brm(bf(Died_28D ~ s(log10(Creatinine_umol_L),by=Weight_category,k=4)+Coma+Weight_category+(1|SITE_STUDY)),
-          data = sm_dat_creat ,
-          family = bernoulli(), cores = 4, seed = 17,
-          iter = 2000, warmup = 1000, thin = 10, refresh = 250)
-sm_dat_creat$mod1_preds=colMeans(fitted(mod1, summary = FALSE,re_formula = NA))
-sm_dat_creat %>% ggplot(aes(x=Creatinine_umol_L, y = mod1_preds, colour = Weight_category))+geom_point()+scale_x_log10()+theme_minimal()+
-  geom_hline(mortality_threshold)+geom_vline(xintercept = 265)
-# fit separate models for each weight category
-mod1 = gam(Died ~ s(log10(Creatinine_umol_L),k= 3)+Coma_Final+s(SITE_STUDY, bs='re'), 
-           family = 'binomial(link=log)',
-           data = sm_dat_creat %>% filter(Weight_category=='(0,25]'))
-
-mod2 = gam(Died ~ s(log10(Creatinine_umol_L),k= 3)+Coma_Final+s(SITE_STUDY, bs='re'), 
-           family = 'binomial(link=log)',
-           data = sm_dat_creat %>% filter(Weight_category!='(0,25]'))
-pred1=predict_gam(mod1,tran_fun = exp,series = "Creatinine_umol_L",
-                  values = list(STUDY= -1, Coma_Final=c(0,1),
-                                Creatinine_umol_L=10^seq(1.3,2.8,length.out=20))) 
-pred1$Weight_category='(0,25]'
-pred2=predict_gam(mod2,tran_fun = exp, series = "Creatinine_umol_L",
-                  values = list(STUDY= -1, Coma_Final=c(0,1),
-                                Creatinine_umol_L=10^seq(1.3,2.8,length.out=20))) 
-pred2$Weight_category='(25,100]'
-preds = rbind(pred1, pred2)
-
-h1=sm_dat_creat%>%ggplot(aes(x = Creatinine_umol_L,colour = Weight_category))+
-  scale_x_log10(limits=crea_limits) + geom_density()+theme_minimal()+theme_bw(base_size = 15)+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), 
-        legend.position="none",
-        plot.margin = unit(c(0, 0.5, 0, 0.5), "cm"))+
-  ggtitle(label = paste('No coma (n=',nrow(sm_dat_creat),')',sep = ''))
-p1=preds %>%
-  plot(comparison='Weight_category')+ylim(0,.25)+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('Creatinine (umol/L)')+
-  geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)+
-  theme(legend.position="none",
-        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))
-
-## brms version - penalise RE on SITEID
-# xx= sm_dat_creat %>% filter(STUDY=='TRACT')
-# ## Question around Black water fever: is this impacting mortality/BUN or Creatinine values?
-# m2_tract <- brm(bf(Died ~ s(log10(Creatinine_umol_L))),
-#           data = sm_dat_creat %>% filter(STUDY=='TRACT'), 
-#           family = bernoulli(), cores = 4, seed = 17,
-#           iter = 2000, warmup = 1000, thin = 10, refresh = 500,
-#           control = list(adapt_delta = 0.99))
-# plot(m2_tract$data$`log10(Creatinine_umol_L)`,colMeans(fitted(m2_tract, summary = FALSE)))
-
-m2_creat <- brm(bf(Died ~ s(log10(Creatinine_umol_L), by=Weight_category) + Coma_Final + (1|STUDY/SITEID)),
-                data = sm_dat_creat, 
-                family = bernoulli(link='log'), cores = 4, seed = 17,
-                iter = 2000, warmup = 1000, thin = 10, refresh = 500)
-sm_dat_creat$M2_preds = colMeans(fitted(m2_creat, summary = FALSE))
-sm_dat_creat %>% ggplot(aes(x=Creatinine_umol_L, y = M2_preds, colour = Weight_category))+
-  geom_point()+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+
-  xlab('Creatinine (umol/L)')+ylab('Probability of death')+
-  geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)
-
-### ************** BUN model **************
-sm_dat_bun = sm_data_analysis %>% filter(!is.na(BUN), !is.na(Coma_Final))#, STUDY != 'TRACT') 
-sort(table(sm_dat_bun$STUDY))
-dim(sm_dat_bun)
-mean(sm_dat_bun$Died)
-table(sm_dat_bun$Weight_category)
-
-
-# fit separate models for each weight category
-mod1 = gam(Died ~ s(log10(BUN),k=4)+s(SITEID, bs='re'), 
-           family = 'binomial',data = sm_dat_bun %>% filter(Weight_category=='(0,25]'))
-mod2 = gam(Died ~ s(log10(BUN),k=4)+s(SITEID, bs='re'), 
-           family = 'binomial',data = sm_dat_bun %>% filter(Weight_category!='(0,25]'))
-pred1=predict_gam(mod1,tran_fun = gtools::inv.logit,series = "BUN",
-                  values = list(SITEID= -1, 
-                                BUN=10^seq(0,1.45,length.out=20))) 
-pred1$Weight_category='(0,25]'
-pred2=predict_gam(mod2,tran_fun = gtools::inv.logit,series = "BUN",
-                  values = list(SITEID= -1, 
-                                BUN=10^seq(0,2,length.out=20))) 
-pred2$Weight_category='(25,100]'
-preds = rbind(pred1, pred2)
-
-h2=sm_dat_bun%>%ggplot(aes(x = BUN,colour = Weight_category))+
-  scale_x_log10(limits=bun_limits) + geom_density()+theme_minimal()+theme_bw(base_size = 15)+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), 
-        legend.position="none",
-        plot.margin = unit(c(0, 0.5, 0, 0.5), "cm"))+
-  ggtitle(label = paste('No coma (n=',nrow(sm_dat_bun),')',sep = ''))
-
-p2=preds %>%
-  plot(comparison='Weight_category')+ylim(0,.25)+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('BUN (mmol/L)')+
-  geom_vline(xintercept = 20)+geom_hline(yintercept = mortality_threshold)+
-  theme(legend.position="none",
-        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))
-
-grid.arrange(h1, h2, p1,p2,nrow=2, ncol = 2, heights = c(1, 1.2))
-
-## BRMS version
-m2_bun <- brm(bf(Died ~ s(log10(BUN), by=Weight_category, k=3) + Coma_Final + (1|STUDY/SITEID)),
-              data = sm_dat_bun, 
-              family = bernoulli(), cores = 4, seed = 17,
-              iter = 2000, warmup = 1000, thin = 2)
-
-sm_dat_bun$M2_preds=colMeans(posterior_epred(m2_bun,re_formula = NA))
-sm_dat_bun %>% ggplot(aes(x=BUN, y = M2_preds, colour = Weight_category))+
-  geom_point()+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+
-  xlab('BUN (mmol/L)')+ylab('Probability of death')+
-  geom_vline(xintercept = 20)+geom_hline(yintercept = mortality_threshold)
+sm_data_analysis_imp %>% 
+  group_by(STUDY) %>%
+  mutate(n_deaths = sum(Died_28D)) %>% 
+  filter(n_deaths>5) %>% ungroup() %>%
+  ggplot(aes(x=Creatinine_imputed, y=Died_28D))+
+  geom_point(shape='+', aes(colour = `Died within 28 days`))+
+  scale_x_log10(breaks=breaks, minor_breaks=minor_breaks)+
+  ylab('Died')+xlab('Creatinine (umol/L)')+
+  geom_hline(yintercept = mortality_threshold)+
+  geom_smooth(
+    method="gam",
+    method.args=list(family="binomial"))+
+  theme_minimal()+ 
+  facet_wrap(vars(STUDY))
 
 ```
 
 
+#### All data
 
-Models using imputation
+Creatinine models of mortality
 
-```{r single_imputation}
-impute_creatinine = gam(log(Creatinine_umol_L) ~ s(log(BUN)) + s(sqrt(Weight_kg)) + s(SITEID,bs='re'),
-                        data = sm_data_analysis)
-summary(impute_creatinine)
-preds_creatinine = exp(predict(object = impute_creatinine, newdata = sm_data_analysis))
-# make imputed value column
-sm_data_analysis$Creatinine_umol_L_Imputed=
-  ifelse(is.na(sm_data_analysis$Creatinine_umol_L),
-         preds_creatinine,
-         sm_data_analysis$Creatinine_umol_L)
-plot(sm_data_analysis$Creatinine_umol_L, preds_creatinine,log = 'xy')
-lines(1:1000, 1:1000)
+```{r mortality_model_creatinine, fig.width=12, fig.height=8}
+# Using measured data
+my_f = as.formula(Died_28D ~ s(log10(Creatinine_umol_L),by=Weight_category,k=5)+
+                    Coma+Weight_category+(1|SITE_STUDY))
+mod_creat_1 <- brm(bf(formula = my_f),
+                   data = sm_data_analysis_imp ,
+                   family = bernoulli(), cores = 4, seed = 17,
+                   iter = 2000, warmup = 1000, thin = 10, refresh = 250)
 
-impute_bun = gam(log(BUN) ~ s(log(Creatinine_umol_L)) + s(SITEID,bs='re'), data = sm_data_analysis)
-summary(impute_bun)
-# make imputed value column
-preds_bun = exp(predict(object = impute_bun, newdata = sm_data_analysis))
-sm_data_analysis$BUN_Imputed = 
-  ifelse(is.na(sm_data_analysis$BUN), preds_bun, sm_data_analysis$BUN)
-plot(sm_data_analysis$BUN, preds_bun,log = 'xy')
+my_f = as.formula(Died_28D ~ s(log10(Creatinine_imputed),by=Weight_category,k=5)+
+                    Coma+Weight_category+(1|SITE_STUDY))
+mod_creat_2 <- brm(bf(formula = my_f),
+                   data = sm_data_analysis_imp ,
+                   family = bernoulli(), cores = 4, seed = 17,
+                   iter = 2000, warmup = 1000, thin = 10, refresh = 250)
 
-plot(sm_data_analysis$Creatinine_umol_L_Imputed, sm_data_analysis$BUN_Imputed,log = 'xy')
-```
+xx = colMeans(posterior_linpred(mod_creat_1,re_formula=NA))
+sm_data_analysis_imp$mod1_creat_preds=NA
+sm_data_analysis_imp$mod1_creat_preds[!is.na(sm_data_analysis_imp$Creatinine_umol_L)]=xx
+sm_data_analysis_imp$mod2_creat_preds= colMeans(posterior_linpred(mod_creat_2,re_formula=NA))
 
-
-BRMS model on imputed data
-
-```{r}
-sm_data_analysis_final = sm_data_analysis %>% filter(STUDY!='TRACT', !is.na(Weight_category))
-m2_creat <- brm(bf(Died ~ s(log10(Creatinine_umol_L_Imputed), by=Weight_category) + (1|SITEID)),
-                data = sm_data_analysis_final, 
-                family = bernoulli(), cores = 4, seed = 17,
-                iter = 2000, warmup = 1000, thin = 10, refresh = 500,
-                control = list(adapt_delta = 0.99))
-
-m2_creat2 <- brm(bf(Died ~ s(log10(Creatinine_umol_L_Imputed), by=Weight_category) + (1|STUDY)),
-                 data = sm_data_analysis_final, 
-                 family = bernoulli(), cores = 4, seed = 17,
-                 iter = 2000, warmup = 1000, thin = 10, refresh = 500,
-                 control = list(adapt_delta = 0.99))
-
-sm_data_analysis_final$M2_preds_creatinine = colMeans(posterior_epred(m2_creat2,re_formula = NULL))
-
-sm_data_analysis_final$M2_preds_creatinine = colMeans(posterior_epred(m2_creat,re_formula = NA))
-p1=sm_data_analysis_final %>% ggplot(aes(x=Creatinine_umol_L_Imputed, y = M2_preds_creatinine, colour = Weight_category))+
-  geom_point()+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+
-  xlab('Creatinine (umol/L)')+ylab('Probability of death')+
-  geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)
-
-
-m2_bun <- brm(bf(Died ~ s(log10(BUN_Imputed), by=Weight_category) + (1|SITEID)),
-              data = sm_data_analysis_final, 
-              family = bernoulli(), cores = 4, seed = 17,
-              iter = 2000, warmup = 1000, thin = 10, refresh = 500,
-              control = list(adapt_delta = 0.99))
-sm_data_analysis_final$M2_preds_bun = colMeans(posterior_epred(m2_bun,re_formula = NA))
-p2=sm_data_analysis_final %>% ggplot(aes(x=BUN_Imputed, y = M2_preds_bun, colour = Weight_category))+
-  geom_point()+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+
-  xlab('BUN (mmol/L)')+ylab('Probability of death')+
-  geom_vline(xintercept = 20)+geom_hline(yintercept = mortality_threshold)
+p1=sm_data_analysis_imp %>%
+  ggplot(aes(x=Creatinine_imputed, y = mod1_creat_preds, 
+             colour = Weight_category))+geom_point()+
+  scale_x_log10(breaks=breaks,minor_breaks=minor_breaks)+
+  xlab('Creatinine (umol/L)')+
+  ylab('Linear predictor for death')+ggtitle('Measured values only')+
+  geom_hline(yintercept = gtools::logit(mortality_threshold))+
+  geom_vline(xintercept = 265)+theme_minimal()
+p2=sm_data_analysis_imp %>%
+  ggplot(aes(x=Creatinine_imputed, y = mod2_creat_preds, 
+             colour = Weight_category))+geom_point()+
+  scale_x_log10(breaks=breaks,minor_breaks=minor_breaks)+
+  xlab('Creatinine (umol/L)')+
+  ylab('Linear predictor for death')+ggtitle('Measured values only')+
+  geom_hline(yintercept = gtools::logit(mortality_threshold))+
+  geom_vline(xintercept = 265)+theme_minimal()
 grid.arrange(p1,p2)
 ```
 
 
-Use the weight normalised Creatinine and BUN to predict outcome
 
-```{r}
-sm_data_analysis = sm_data_analysis%>%filter(!is.na(Weight_kg), STUDY != 'TRACT', Coma_Final==0)
+BUN models of mortality
 
-mod_weight_bun = gam(log2(BUN_Imputed) ~ s(Weight_kg), data = sm_data_analysis)
-summary(mod_weight_bun)
+```{r mortality_model_bun, fig.width=12, fig.height=8}
+# Using measured data
+my_f = as.formula(Died_28D ~ s(log10(BUN),by=Weight_category,k=5)+
+                    Coma+Weight_category+(1|SITE_STUDY))
+mod_bun_1 <- brm(bf(formula = my_f),
+                 data = sm_data_analysis_imp ,
+                 family = bernoulli(), cores = 4, seed = 17,
+                 iter = 2000, warmup = 1000, thin = 10, refresh = 250)
 
-sm_data_analysis$BUN_baseline_log2 = predict(mod_weight_bun)
-plot(sm_data_analysis$Weight_kg, sm_data_analysis$BUN_Imputed, log='y')
-lines(1:100, 2^predict(mod_weight_bun, newdata = data.frame(Weight_kg=1:100)), 
-      col='red', lwd=3)
-sm_data_analysis$BUN_Imputed_FC = log2(sm_data_analysis$BUN_Imputed)-sm_data_analysis$BUN_baseline_log2
+my_f = as.formula(Died_28D ~ s(log10(BUN_imputed),by=Weight_category,k=5)+
+                    Coma+Weight_category+(1|SITE_STUDY))
+mod_bun_2 <- brm(bf(formula = my_f),
+                 data = sm_data_analysis_imp ,
+                 family = bernoulli(), cores = 4, seed = 17,
+                 iter = 2000, warmup = 1000, thin = 10, refresh = 250)
 
-summary(lm(BUN_Imputed_FC ~ SEX + Coma_Final + STUDY, data = sm_data_analysis))
-plot(sm_data_analysis$BUN_Imputed, sm_data_analysis$BUN_Imputed_FC)
+xx = colMeans(posterior_linpred(mod_bun_1,re_formula=NA))
+sm_data_analysis_imp$mod1_bun_preds=NA
+sm_data_analysis_imp$mod1_bun_preds[!is.na(sm_data_analysis_imp$BUN)]=xx
+sm_data_analysis_imp$mod2_bun_preds= colMeans(posterior_linpred(mod_bun_2,re_formula=NA))
 
-gam_bun <- gam(Died ~ s(BUN_Imputed_FC, by=Weight_category) + s(STUDY,bs='re'),
-               data = sm_data_analysis, 
-               family = binomial())
-summary(gam_bun)
+# Linear predictor scale
+p1=sm_data_analysis_imp %>%
+  ggplot(aes(x=BUN_imputed, y = mod1_bun_preds, 
+             colour = Weight_category))+geom_point()+
+  scale_x_log10(breaks=breaks,minor_breaks=minor_breaks)+
+  xlab('Blood urea nitrogen (mmol/L)')+
+  ylab('Linear predictor for death')+ggtitle('Measured values only')+
+  geom_hline(yintercept = gtools::logit(mortality_threshold))+
+  geom_vline(xintercept = 20)+theme_minimal()
+p2=sm_data_analysis_imp %>%
+  ggplot(aes(x=BUN_imputed, y = mod2_bun_preds, 
+             colour = Weight_category))+geom_point()+
+  scale_x_log10(breaks=breaks,minor_breaks=minor_breaks)+
+  xlab('Blood urea nitrogen (mmol/L)')+
+  ylab('Linear predictor for death')+ggtitle('Imputed values')+
+  geom_hline(yintercept = gtools::logit(mortality_threshold))+
+  geom_vline(xintercept = 20)+theme_minimal()
+grid.arrange(p1,p2)
 
-m2_bun <- brm(bf(Died ~ s(BUN_Imputed_FC, by=Weight_category) + (1|STUDY)),
-              data = sm_data_analysis, 
-              family = bernoulli(), cores = 4, seed = 17,
-              iter = 4000, warmup = 2000, thin = 10, refresh = 1000)
-sm_data_analysis$M2_preds=colMeans(posterior_epred(m2_bun,re_formula = NA))
-sm_data_analysis %>% ggplot(aes(x=BUN_Imputed_FC, y = M2_preds, colour = STUDY))+
-  geom_jitter()
-
-m2_bun <- brm(bf(Died ~ s(BUN_Imputed_FC, by=STUDY)),
-              data = sm_data_analysis, 
-              family = bernoulli(), cores = 4, seed = 17,
-              iter = 4000, warmup = 2000, thin = 10, refresh = 1000)
-sm_data_analysis$M2_preds=colMeans(posterior_epred(m2_bun,re_formula = NA))
-sm_data_analysis %>% ggplot(aes(x=BUN_Imputed_FC, y = M2_preds, colour = STUDY))+
-  geom_jitter()
+# Outcome scale
+p1=sm_data_analysis_imp %>%
+  ggplot(aes(x=BUN_imputed, y = inv.logit(mod1_bun_preds), 
+             colour = Weight_category))+geom_point()+
+  scale_x_log10()+xlab('Blood urea nitrogen (mmol/L)')+
+  ylab('Probability of death')+ggtitle('Measured values only')+
+  geom_hline(yintercept = mortality_threshold)+
+  geom_vline(xintercept = 20)+theme_minimal()
+p2=sm_data_analysis_imp %>%
+  ggplot(aes(x=BUN_imputed, y = inv.logit(mod2_bun_preds), 
+             colour = Weight_category))+geom_point()+
+  scale_x_log10()+xlab('Blood urea nitrogen (mmol/L)')+
+  ylab('Linear predictor for death')+ggtitle('Imputed values')+
+  geom_hline(yintercept = mortality_threshold)+
+  geom_vline(xintercept = 20)+theme_minimal()
+grid.arrange(p1,p2)
 ```
 
 
-Run the mortality prediction model on imputed data
+
+
+Using both creatinine and BUN to predict outcomes
 
 ```{r}
-### ************** Creatinine model **************
-sm_no_coma = sm_data_analysis %>% filter(Coma_Final==0, !is.na(Weight_kg), Creatinine_umol_L_Imputed>10)
-sm_no_coma$STUDY=as.factor(sm_no_coma$STUDY)
-
-table(sm_no_coma$Weight_category)
-table(sm_no_coma$Weight_category, sm_no_coma$STUDY)
-# fit separate models for each weight category
-mod1 = gam(Died ~ s(log10(Creatinine_umol_L_Imputed),k=4), 
-           family = 'binomial',data = sm_no_coma %>% 
-             filter(Weight_category=='(0,25]'))
-mod2 = gam(Died ~ s(log10(Creatinine_umol_L_Imputed),k=4), 
-           family = 'binomial',data = sm_no_coma %>% filter(Weight_category!='(0,25]'))
-mod3 = gam(Died ~ s(log10(Creatinine_umol_L_Imputed),k=4,by = Weight_category), 
-           family = 'binomial',data = sm_no_coma)
-
-pred1=predict_gam(mod1,tran_fun = gtools::inv.logit,series = "Creatinine_umol_L_Imputed",
-                  values = list(STUDY= -1, 
-                                Creatinine_umol_L_Imputed=10^seq(1.3,2.8,length.out=20))) 
-pred1$Weight_category='(0,25]'
-pred2=predict_gam(mod2,tran_fun = gtools::inv.logit,series = "Creatinine_umol_L_Imputed",
-                  values = list(STUDY= -1, 
-                                Creatinine_umol_L_Imputed=10^seq(1.3,2.8,length.out=20))) 
-pred2$Weight_category='(25,100]'
-preds = rbind(pred1, pred2)
-
-h1=sm_no_coma%>%ggplot(aes(x = Creatinine_umol_L_Imputed,colour = Weight_category))+
-  scale_x_log10(limits=crea_limits) + geom_density()+theme_minimal()+theme_bw(base_size = 15)+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), 
-        legend.position="none",
-        plot.margin = unit(c(0, 0.5, 0, 0.5), "cm"))+
-  ggtitle(label = paste('No coma (n=',nrow(sm_no_coma),')',sep = ''))
-p1=preds %>%
-  plot(comparison='Weight_category')+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('Creatinine (umol/L)')+
-  geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)+
-  theme(legend.position="none",
-        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))
+my_f = as.formula(Died_28D ~ s(log10(BUN_imputed),by=Weight_category,k=5)+
+                    s(log10(Creatinine_imputed),by=Weight_category,k=5)+
+                    Coma+Weight_category+(1|SITE_STUDY))
+mod_both <- brm(bf(formula = my_f),
+                data = sm_data_analysis_imp ,
+                family = bernoulli(), cores = 4, seed = 17,
+                iter = 2000, warmup = 1000, thin = 10, refresh = 250)
 
 
-q1=predict_gam(mod3,tran_fun = gtools::inv.logit,
-               series = "Creatinine_umol_L_Imputed",
-               values = list(Creatinine_umol_L_Imputed=10^seq(1.3,2.8,length.out=20))) %>%
-  plot(comparison='Weight_category')+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('Creatinine (umol/L)')+
-  geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)+
-  theme(legend.position="none",
-        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))
+mod_both2 <- lme4::glmer(Died_28D ~ log10(BUN_imputed)+
+                           log10(Creatinine_imputed)+
+                           Coma+Weight_category+(1|SITE_STUDY),
+                         data = sm_data_analysis_imp, family = binomial())
+summary(mod_both2)
 
-### ************** BUN model **************
+mod_both2 =
+  lme4::glmer(Died_28D ~ log10(BUN)+
+                log10(Creatinine_umol_L)+
+                Coma+(1|SITE_STUDY),
+              data = sm_data_analysis_imp %>% filter(Weight_kg<25),
+              family = binomial())
+summary(mod_both2)
 
-# fit separate models for each weight category
-mod1 = gam(Died ~ s(log10(BUN_Imputed),k=4), 
-           family = 'binomial',data = sm_no_coma %>% filter(Weight_category=='(0,25]'))
-mod2 = gam(Died ~ s(log10(BUN_Imputed),k=4), 
-           family = 'binomial',data = sm_no_coma %>% filter(Weight_category!='(0,25]'))
-mod3 = gam(Died ~ s(log10(BUN_Imputed),k=4, by = Weight_category), 
-           family = 'binomial',data = sm_no_coma)
+mod_both2 <- lme4::glmer(Died_28D ~ scale(log10(BUN))+
+                           scale(log10(Creatinine_umol_L))+
+                           Coma+(1|SITE_STUDY),
+                         data = sm_data_analysis_imp %>% filter(Weight_kg>25),
+                         family = binomial())
+summary(mod_both2)
 
-pred1=predict_gam(mod1,tran_fun = gtools::inv.logit,series = "BUN_Imputed",
-                  values = list(BUN_Imputed=10^seq(0,1.45,length.out=20))) 
-pred1$Weight_category='(0,25]'
-pred2=predict_gam(mod2,tran_fun = gtools::inv.logit,series = "BUN_Imputed",
-                  values = list(BUN_Imputed=10^seq(0,2,length.out=20))) 
-pred2$Weight_category='(25,100]'
-preds = rbind(pred1, pred2)
+# Create grid of values for log10(BUN) and log10(Creatinine)
+bun_seq <- seq(min(log10(sm_data_analysis_imp$BUN_imputed), na.rm = TRUE),
+               max(log10(sm_data_analysis_imp$BUN_imputed), na.rm = TRUE), 
+               length.out = 100)
+creatinine_seq <- seq(min(log10(sm_data_analysis_imp$Creatinine_imputed), na.rm = TRUE),
+                      max(log10(sm_data_analysis_imp$Creatinine_imputed), na.rm = TRUE),
+                      length.out = 100)
 
-h2=sm_no_coma%>%ggplot(aes(x = BUN_Imputed,colour = Weight_category))+
-  scale_x_log10(limits=bun_limits) + geom_density()+theme_minimal()+theme_bw(base_size = 15)+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), 
-        legend.position="none",
-        plot.margin = unit(c(0, 0.5, 0, 0.5), "cm"))+
-  ggtitle(label = paste('No coma (n=',nrow(sm_no_coma),')',sep = ''))
+# If Weight_category is a factor, get levels
+weight_levels <- unique(sm_data_analysis_imp$Weight_category)
 
-p2=preds %>%
-  plot(comparison='Weight_category')+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('BUN (mmol/L)')+
-  geom_vline(xintercept = 20)+geom_hline(yintercept = mortality_threshold)+
-  theme(legend.position="none",
-        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))+
-  coord_cartesian(ylim = c(0,.25), xlim = c(1,30))
+# Create prediction grid
+new_data <- expand.grid(
+  BUN_imputed = 10^bun_seq,
+  Creatinine_imputed = 10^creatinine_seq,
+  Weight_category = weight_levels,
+  Coma = c('Yes','No')
+)
 
-q2=predict_gam(mod3,tran_fun = gtools::inv.logit,
-               series = "BUN_Imputed",
-               values = list(BUN_Imputed=10^seq(0,2,length.out=20))) %>%
-  plot(comparison='Weight_category')+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('BUN (mmol/L)')+
-  geom_vline(xintercept = 20)+geom_hline(yintercept = mortality_threshold)+
-  theme(legend.position="none",
-        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))
+# Get fitted values (mean predicted probability of death)
+new_data$predicted  = colMeans(posterior_linpred(mod_both, newdata = new_data, scale = "response",re_formula = NA))
 
-grid.arrange(h1,h2,p1,p2,ncol=2)
+# Plot heatmap
+ggplot(new_data, aes(x = BUN_imputed, y = Creatinine_imputed, fill = predicted)) +
+  geom_raster() + scale_x_log10()+scale_y_log10()+
+  scale_fill_viridis_c(name = "P(Death)") +
+  facet_wrap(~ Weight_category) +
+  labs(x = "log10(BUN)", y = "log10(Creatinine)", 
+       title = "Predicted Probability of Death") +
+  theme_minimal()
 ```
+
 
 
 ## Half thresholds??
