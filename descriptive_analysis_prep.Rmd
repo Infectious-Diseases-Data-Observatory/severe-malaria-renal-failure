@@ -328,6 +328,13 @@ sm_data_analysis %>%
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
   annotation_logticks(sides='l') +
   theme_bw(base_size = 15)#+theme(legend.position="none")
+
+
+mod_age = gam(Age ~ s(Weight_kg) + s(STUDY, bs='re'), data = sm_data_analysis)
+table(Age=is.na(sm_data_analysis$Age),Weight=is.na(sm_data_analysis$Weight_kg))
+ind1 = is.na(sm_data_analysis$Age) & !is.na(sm_data_analysis$Weight_kg)
+sum(ind1)
+sm_data_analysis$Age[ind1] = predict(mod_age,newdata = sm_data_analysis[ind1,])
 ```
 
 
