@@ -135,6 +135,22 @@ table(is.na(sm_data_analysis$Creatinine_imputed), is.na(sm_data_analysis$BUN_imp
 
 ## Mortality models
 
+### Bin BUN and Creatinine
+
+```{r}
+# Bin BUN into reasonable groups 
+bun_cuts = c(.5, 5, 10, 20, 200)
+sm_data_analysis <- sm_data_analysis %>%
+  mutate(BUN_groups = cut(BUN, breaks = bun_cuts,include.lowest = T))  
+levels(sm_data_analysis$BUN_groups)=c("<5","(5,10]","(10,20]",">20")
+# Bin Creatinine into reaosnable groups 
+creat_cuts = c(10,65, 130, 265, 2000)
+sm_data_analysis <- sm_data_analysis %>%
+  mutate(Creat_groups = cut(Creatinine_umol_L, breaks = creat_cuts,include.lowest = T))  
+levels(sm_data_analysis$Creat_groups)=c("<65","(65,130]","(130,265]",">265")
+```
+
+
 ### Non parametric
 
 make analysis set with imputed values
@@ -160,7 +176,12 @@ levels(sm_data_analysis_imp$Creat_groups)=c("<65","(65,130]","(130,265]",">265")
 
 Using only measured BUN data
 
+
 ```{r bun_groups_mortality}
+sm_dat_bun = sm_data_analysis %>% 
+  filter(!is.na(BUN), !is.na(Weight_category), 
+         INCLUDE_CC_ANALYSIS) 
+
 # Summarize by BUN quantile and Coma
 summary_df <- sm_data_analysis_imp %>% filter(!is.na(BUN)) %>%
   group_by(Coma, BUN_groups, Weight_category) %>%
@@ -175,7 +196,7 @@ summary_df <- sm_data_analysis_imp %>% filter(!is.na(BUN)) %>%
   )
 
 # Plot
-summary_df %>% ggplot(aes(x = BUN_groups, y = mortality, group = Coma, colour = Coma)) +
+p1=summary_df %>% ggplot(aes(x = BUN_groups, y = mortality, group = Coma, colour = Coma)) +
   geom_point(aes(size = n), position = position_dodge(width = 0.4)) +
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2,
                 position = position_dodge(width = 0.4)) +
@@ -223,6 +244,12 @@ summary_df %>% ggplot(aes(x = BUN_groups, y = mortality, group = Coma, colour = 
 using the measured creatinine
 
 ```{r creat_groups_mortality}
+
+sm_dat_creat = sm_data_analysis %>% 
+  filter(!is.na(Creatinine_umol_L), !is.na(Weight_category),
+         !is.na(Died_28D),!is.na(Coma),
+         INCLUDE_CC_ANALYSIS)
+
 # Summarize by Creatinine quantile and Coma
 summary_df <- sm_data_analysis_imp %>% filter(!is.na(Creatinine_umol_L)) %>%
   group_by(Creat_groups, Coma, Weight_category) %>%
@@ -270,7 +297,7 @@ summary_df <- sm_data_analysis_imp %>%
   )
 
 # Plot
-summary_df %>% ggplot(aes(x = Creat_groups, y = mortality, group = Coma, colour = Coma)) +
+p2 = summary_df %>% ggplot(aes(x = Creat_groups, y = mortality, group = Coma, colour = Coma)) +
   geom_point(aes(size = n), position = position_dodge(width = 0.4)) +
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2,
                 position = position_dodge(width = 0.4)) +
@@ -283,40 +310,154 @@ summary_df %>% ggplot(aes(x = Creat_groups, y = mortality, group = Coma, colour 
   theme_minimal()+facet_wrap(vars(Weight_category))
 ```
 
-### Parameteric models
+
+```{r non_para_mortality}
+ggsave(plot = grid.arrange(p1,p2), filename = 'nonpara.pdf')
+```
 
 #### Individual studies
 
 ```{r individual_study_bun_creat_mortality}
-sm_data_analysis_imp %>% 
-  group_by(STUDY) %>%
-  mutate(n_deaths = sum(Died_28D)) %>% 
-  filter(n_deaths>5) %>% ungroup() %>%
-  ggplot(aes(x=BUN_imputed, y=Died_28D))+
-  geom_point(shape='+', aes(colour = `Died within 28 days`))+
-  scale_x_log10(breaks=breaks, minor_breaks=minor_breaks)+
-  ylab('Died')+xlab('Blood urea nitrogen (mmol/L)')+
-  geom_hline(yintercept = mortality_threshold)+
-  geom_smooth(
-    method="gam",
-    method.args=list(family="binomial"))+
-  theme_minimal()+ 
-  facet_wrap(vars(STUDY))
+# sm_data_analysis_imp %>% 
+#   group_by(STUDY) %>%
+#   mutate(n_deaths = sum(Died_28D)) %>% 
+#   filter(n_deaths>5) %>% ungroup() %>%
+#   ggplot(aes(x=BUN_imputed, y=Died_28D))+
+#   geom_point(shape='+', aes(colour = `Died within 28 days`))+
+#   scale_x_log10(breaks=breaks, minor_breaks=minor_breaks)+
+#   ylab('Died')+xlab('Blood urea nitrogen (mmol/L)')+
+#   geom_hline(yintercept = mortality_threshold)+
+#   geom_smooth(
+#     method="gam",
+#     method.args=list(family="binomial"))+
+#   theme_minimal()+ 
+#   facet_wrap(vars(STUDY))
+# 
+# sm_data_analysis_imp %>% 
+#   group_by(STUDY) %>%
+#   mutate(n_deaths = sum(Died_28D)) %>% 
+#   filter(n_deaths>5) %>% ungroup() %>%
+#   ggplot(aes(x=Creatinine_imputed, y=Died_28D))+
+#   geom_point(shape='+', aes(colour = `Died within 28 days`))+
+#   scale_x_log10(breaks=breaks, minor_breaks=minor_breaks)+
+#   ylab('Died')+xlab('Creatinine (umol/L)')+
+#   geom_hline(yintercept = mortality_threshold)+
+#   geom_smooth(
+#     method="gam",
+#     method.args=list(family="binomial"))+
+#   theme_minimal()+ 
+#   facet_wrap(vars(STUDY))
 
-sm_data_analysis_imp %>% 
+sm_dat_creat %>%
   group_by(STUDY) %>%
-  mutate(n_deaths = sum(Died_28D)) %>% 
-  filter(n_deaths>5) %>% ungroup() %>%
-  ggplot(aes(x=Creatinine_imputed, y=Died_28D))+
-  geom_point(shape='+', aes(colour = `Died within 28 days`))+
-  scale_x_log10(breaks=breaks, minor_breaks=minor_breaks)+
-  ylab('Died')+xlab('Creatinine (umol/L)')+
-  geom_hline(yintercept = mortality_threshold)+
-  geom_smooth(
-    method="gam",
-    method.args=list(family="binomial"))+
-  theme_minimal()+ 
-  facet_wrap(vars(STUDY))
+  mutate(STUDY = paste0(STUDY, " (n = ", n(), ")")) %>%
+  ggplot(aes(x=Creatinine_umol_L, y = Died_28D))+
+  geom_point()+
+  scale_x_log10(minor_breaks=minor_breaks, breaks=breaks)+theme_minimal()+
+  geom_hline(yintercept = mortality_threshold)+ylab('Proportion dead by day 28')+
+  xlab('Creatinine (umol/L)')+ geom_vline(xintercept = 265)+
+  geom_smooth(method='gam',method.args = list(family='binomial'))+
+  facet_wrap(~STUDY)
+
+sm_dat_bun %>%
+  group_by(STUDY) %>%
+  mutate(STUDY = paste0(STUDY, " (n = ", n(), ")")) %>%
+  ggplot(aes(x=BUN, y = Died_28D))+
+  geom_point()+
+  scale_x_log10(minor_breaks=minor_breaks, breaks=breaks)+theme_minimal()+
+  geom_hline(yintercept = mortality_threshold)+ylab('Proportion dead by day 28')+
+  xlab('Urea Nitrogen (mmol/L)')+ geom_vline(xintercept = 20)+
+  geom_smooth(method='gam',method.args = list(family='binomial'))+
+  facet_wrap(~STUDY)
+
+mod1 <- brm(bf(Died_28D ~ s(log10(Creatinine_umol_L),by=Weight_category,k=4)+Coma+s(Age)+(1|STUDY/SITE_STUDY)),
+          data = sm_dat_creat ,
+          family = bernoulli(), cores = 4, seed = 17,
+          iter = 2000, warmup = 1000, thin = 10, refresh = 250)
+sm_dat_creat$mod1_preds=colMeans(fitted(mod1, summary = FALSE,re_formula = NA))
+sm_dat_creat %>% ggplot(aes(x=Creatinine_umol_L, y = mod1_preds, colour = Weight_category))+geom_point()+scale_x_log10()+theme_minimal()+
+  geom_hline(yintercept = mortality_threshold)+geom_vline(xintercept = 265)
+
+h1=sm_dat_creat%>%ggplot(aes(x = Creatinine_umol_L,colour = Weight_category))+
+  scale_x_log10(limits=crea_limits) + geom_density()+theme_minimal()+theme_bw(base_size = 15)+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), 
+        legend.position="none",
+        plot.margin = unit(c(0, 0.5, 0, 0.5), "cm"))+
+  ggtitle(label = paste('No coma (n=',nrow(sm_dat_creat),')',sep = ''))
+p1=preds %>%
+  plot(comparison='Weight_category')+ylim(0,.25)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
+  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('Creatinine (umol/L)')+
+  geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)+
+  theme(legend.position="none",
+        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))
+
+
+m2_creat <- brm(bf(Died ~ s(log10(Creatinine_umol_L), by=Weight_category) + Coma_Final + (1|STUDY/SITEID)),
+                data = sm_dat_creat, 
+                family = bernoulli(link='log'), cores = 4, seed = 17,
+                iter = 2000, warmup = 1000, thin = 10, refresh = 500)
+sm_dat_creat$M2_preds = colMeans(fitted(m2_creat, summary = FALSE))
+sm_dat_creat %>% ggplot(aes(x=Creatinine_umol_L, y = M2_preds, colour = Weight_category))+
+  geom_point()+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
+  annotation_logticks(sides='b')+theme_bw(base_size = 15)+
+  xlab('Creatinine (umol/L)')+ylab('Probability of death')+
+  geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)
+
+### ************** BUN model **************
+sm_dat_bun = sm_data_analysis %>% filter(!is.na(BUN), !is.na(Coma_Final))#, STUDY != 'TRACT') 
+sort(table(sm_dat_bun$STUDY))
+dim(sm_dat_bun)
+mean(sm_dat_bun$Died)
+table(sm_dat_bun$Weight_category)
+
+
+# fit separate models for each weight category
+mod1 = gam(Died ~ s(log10(BUN),k=4)+s(SITEID, bs='re'), 
+           family = 'binomial',data = sm_dat_bun %>% filter(Weight_category=='(0,25]'))
+mod2 = gam(Died ~ s(log10(BUN),k=4)+s(SITEID, bs='re'), 
+           family = 'binomial',data = sm_dat_bun %>% filter(Weight_category!='(0,25]'))
+pred1=predict_gam(mod1,tran_fun = gtools::inv.logit,series = "BUN",
+                  values = list(SITEID= -1, 
+                                BUN=10^seq(0,1.45,length.out=20))) 
+pred1$Weight_category='(0,25]'
+pred2=predict_gam(mod2,tran_fun = gtools::inv.logit,series = "BUN",
+                  values = list(SITEID= -1, 
+                                BUN=10^seq(0,2,length.out=20))) 
+pred2$Weight_category='(25,100]'
+preds = rbind(pred1, pred2)
+
+h2=sm_dat_bun%>%ggplot(aes(x = BUN,colour = Weight_category))+
+  scale_x_log10(limits=bun_limits) + geom_density()+theme_minimal()+theme_bw(base_size = 15)+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), 
+        legend.position="none",
+        plot.margin = unit(c(0, 0.5, 0, 0.5), "cm"))+
+  ggtitle(label = paste('No coma (n=',nrow(sm_dat_bun),')',sep = ''))
+
+p2=preds %>%
+  plot(comparison='Weight_category')+ylim(0,.25)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
+  annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('BUN (mmol/L)')+
+  geom_vline(xintercept = 20)+geom_hline(yintercept = mortality_threshold)+
+  theme(legend.position="none",
+        plot.margin = unit(c(0.5, 0.5, 0, 0.5), "cm"))
+
+grid.arrange(h1, h2, p1,p2,nrow=2, ncol = 2, heights = c(1, 1.2))
+
+## BRMS version
+m2_bun <- brm(bf(Died ~ s(log10(BUN), by=Weight_category, k=3) + Coma_Final + (1|STUDY/SITEID)),
+              data = sm_dat_bun, 
+              family = bernoulli(), cores = 4, seed = 17,
+              iter = 2000, warmup = 1000, thin = 2)
+
+sm_dat_bun$M2_preds=colMeans(posterior_epred(m2_bun,re_formula = NA))
+sm_dat_bun %>% ggplot(aes(x=BUN, y = M2_preds, colour = Weight_category))+
+  geom_point()+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
+  annotation_logticks(sides='b')+theme_bw(base_size = 15)+
+  xlab('BUN (mmol/L)')+ylab('Probability of death')+
+  geom_vline(xintercept = 20)+geom_hline(yintercept = mortality_threshold)
 
 ```
 
