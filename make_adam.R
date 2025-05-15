@@ -190,6 +190,9 @@ ind = which(lb_SM$LBTEST=='Urea'&lb_SM$STUDYID=='ITYCK')
 lb_SM$LBTEST[ind] = 'Urea Nitrogen'
 lb_SM$LBSTRESU[ind] = 'mmol/L'
 
+ind = which(lb_SM$LBTEST=='Bicarbonate'&lb_SM$LBSTRESU=='mmol/L')
+lb_SM$LBSTRESU[ind]='mEq/L'
+
 ## manual corrections
 ids_blantyre = unique(dm_SM$USUBJID[dm_SM$SITEID=='Blantyre' & dm_SM$STUDYID=='ZQEVB'])
 ind = which(lb_SM$STUDYID=='ZQEVB' & lb_SM$LBTEST=='Urea Nitrogen' &
@@ -404,7 +407,7 @@ dat_all_final$Weight_kg[dat_all_final$Age>100 & dat_all_final$Weight_kg<1]=NA
 colnames(dat_all_final) = gsub(pattern = '/',replacement = '_',fixed = T,x = colnames(dat_all_final))
 colnames(dat_all_final) = gsub(pattern = '^',replacement = '_',fixed = T,x = colnames(dat_all_final))
 table(dat_all_final$STUDY, dat_all_final$Malaria_Positive, useNA = 'ifany')
-
+dat_all_final$Malaria_Positive[is.na(dat_all_final$Malaria_Positive) & dat_all_final$STUDY=='Chittagong']=TRUE
 
 dat_all_final$BUN=dat_all_final$`Urea Nitrogen_mmol_L`
 dat_all_final$BUN = ifelse(dat_all_final$BUN==0,NA, dat_all_final$BUN)
