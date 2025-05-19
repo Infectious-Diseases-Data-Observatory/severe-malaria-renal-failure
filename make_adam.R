@@ -472,7 +472,10 @@ dat_all_final = dat_all_final %>%
   `Died within 28 days` = Died & (is.na(Time_to_death) | Time_to_death < (28*24)),
   `Died within 28 days` = ifelse(`Died within 28 days`, 'Yes', 'No'))
 
-write_csv(dat_all_final, file = 'Data/Renal_Analysis_Data.csv')
+
+source('hb_data_imputation.R')
+dat_all_final = hb_hct_impute(dat_all_final)
+write_csv(dat_all_final, file = 'Data/adam_out.csv')
 
 
 

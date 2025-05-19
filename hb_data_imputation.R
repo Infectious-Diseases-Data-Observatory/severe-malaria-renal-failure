@@ -15,7 +15,8 @@ hb_hct_impute = function(sm_data){
   p1=sm_data %>% slice_sample(prop = 1) %>% ggplot(aes(x=Hb, y = HCT,colour = STUDY))+
     geom_point(alpha=0.4)+geom_smooth(aes(group=NA),method=lm)+xlim(0,15)+ylim(0,45)+
     theme_minimal()+ylab('Haematocrit (%)')+xlab('Haemoglobin (g/dL)')
-  ggsave(filename = 'hb_hct.pdf',plot = p1)
+  p1
+  # ggsave(filename = 'hb_hct.pdf',plot = p1)
   
   sm_data %>% slice_sample(prop = 1) %>% ggplot(aes(x=Hb, y = (3*Hb)-HCT,colour = STUDY))+geom_point(alpha=0.4)+geom_smooth(aes(group=NA))+xlim(0,15)+ylim(-10,10)+
     theme_minimal()
