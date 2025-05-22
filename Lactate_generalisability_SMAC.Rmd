@@ -16,7 +16,7 @@ library(tidyverse)
 library(brms)
 library(ggplot2)
 library(gridExtra)
-library(lme4)
+# library(lme4)
 
 binomial_smooth <- function(...) {
   geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
@@ -45,33 +45,35 @@ mortality_threshold = 0.05
 
 ```{r load_data}
 sm_data = readr::read_csv(file = 'Data/Analysis_data.csv')
-smac = read_csv('Data/smac.csv')
-table(hb=is.na(smac$HB), hct=is.na(smac$HCT))
+# smac = read_csv('Data/smac.csv')
+# table(hb=is.na(smac$HB), hct=is.na(smac$HCT))
 sm_data_analysis = sm_data %>% 
   filter(INCLUDE_CC_ANALYSIS,
-         !is.na(Hb)) %>%
-  mutate(`Hb<5g/dL`=ifelse(Hb<5,'Yes','No'))
+         !is.na(Hb), Lactate<15, !is.na(Lactate)) %>%
+  mutate(Anaemic=ifelse(Hb<5,'Yes','No'),
+         Anaemic=as.factor(Anaemic),
+         Coma = ifelse(Coma_Final==1,'Yes','No'))
 
-smac = smac %>% 
-  mutate(Reason_exclude = case_when(
-    is.na(LACTATE) ~ 'No lactate measurement',
-    is.na(HB) ~ 'No haemoglobin or haematocrit',
-    is.na(Died) ~ 'No outcome',
-    T ~ 'INCLUDE'))
-table(smac$Reason_exclude)
-smac = smac %>% filter(!is.na(Died), !is.na(LACTATE), !(is.na(HB))) %>%
-  mutate(Lactate=LACTATE, `Hb<5g/dL`=ifelse(HB<5,'Yes','No'), Hb=HB, Died_28D=Died)
-any(is.na(smac$Hb))
+# smac = smac %>% 
+#   mutate(Reason_exclude = case_when(
+#     is.na(LACTATE) ~ 'No lactate measurement',
+#     is.na(HB) ~ 'No haemoglobin or haematocrit',
+#     is.na(Died) ~ 'No outcome',
+#     T ~ 'INCLUDE'))
+# table(smac$Reason_exclude)
+# smac = smac %>% filter(!is.na(Died), !is.na(LACTATE), !(is.na(HB))) %>%
+#   mutate(Lactate=LACTATE, `Hb<5g/dL`=ifelse(HB<5,'Yes','No'), Hb=HB, Died_28D=Died)
+# any(is.na(smac$Hb))
 
 aggregate(Died~STUDY, data = sm_data_analysis, FUN = function(x) c(round(100*mean(x)), length(x)))
 
-cols = intersect(colnames(sm_data_analysis), colnames(smac))
-dat = rbind(sm_data_analysis[,cols], smac[,cols])
-table(dat$STUDY)
-dat$STUDY=as.factor(dat$STUDY)
-dat$SITEID=as.factor(dat$SITEID)
-dat$Age_cat=as.factor(dat$Age<5)
-dat$Anaemic= as.factor(dat$`Hb<5g/dL`)
+# cols = intersect(colnames(sm_data_analysis), colnames(smac))
+# dat = rbind(sm_data_analysis[,cols], smac[,cols])
+# table(dat$STUDY)
+# dat$STUDY=as.factor(dat$STUDY)
+# dat$SITEID=as.factor(dat$SITEID)
+# dat$Age_cat=as.factor(dat$Age<5)
+# dat$Anaemic= as.factor(dat$`Hb<5g/dL`)
 ```
 
 
@@ -81,11 +83,11 @@ dat$Anaemic= as.factor(dat$`Hb<5g/dL`)
 individual studies
 
 ```{r}
-dat %>% filter(Lactate<15, Coma_Final==0) %>%
+sm_data_analysis %>% filter(Lactate<15) %>%
   group_by(STUDY) %>%
   mutate(STUDY = paste0(STUDY, " (n = ", n(), ")")) %>%
   ggplot(aes(x=Lactate, y = Died_28D))+
-  geom_point()+theme_minimal()+
+  geom_point(pch='.')+theme_minimal()+
   geom_hline(yintercept = mortality_threshold)+ylab('Proportion dead by day 28')+
   xlab('Lactate (umol/L)')+ 
   geom_smooth(method='gam',method.args = list(family='binomial'))+
@@ -96,7 +98,7 @@ dat %>% filter(Lactate<15, Coma_Final==0) %>%
 simple logistic regression
 
 ```{r}
-mod_lactate = glmer(Died_28D ~ (Lactate>5) + Anaemic + Coma_Final + (1|STUDY/SITEID), family = 'binomial', data = dat)
+mod_lactate = lme4::glmer(Died_28D ~ (Lactate>5) + Anaemic + Coma_Final + (1|STUDY/SITEID), family = 'binomial', data = sm_data_analysis)
 summary(mod_lactate)
 ```
 
@@ -106,21 +108,21 @@ brms
 
 ```{r}
 ## mgcv version
-gam_lactate = mgcv::gam(Died ~ s(Lactate, by=Anaemic) +  Anaemic + Coma_Final + s(STUDY, bs='re'),
-          data = dat %>% filter(Lactate<15), family = binomial())
+sm_data_analysis$STUDY=as.factor(STUDY)
+gam_lactate = mgcv::gam(Died ~ s(Lactate, by=Anaemic) + Anaemic + Coma_Final + s(STUDY, bs='re'),
+          data = sm_data_analysis, family = binomial())
 
-dat = dat %>% filter(Lactate<15, Coma_Final==0)
-m2_lactate = brm(bf(Died ~ s(Lactate, by=Anaemic,k=4)+Anaemic+(1|STUDY/SITEID)),
-          data = dat , 
+m2_lactate = brm(bf(Died ~ s(Lactate, by=Anaemic,k=4)+Anaemic+Coma_Final+(1|STUDY/SITEID)),
+          data = sm_data_analysis , 
           family = bernoulli(), cores = 4, seed = 17,
           iter = 4000, warmup = 2000, thin = 10, refresh = 250)
-dat$M2_preds=fitted(m2_lactate,re_formula = NA)[, 'Estimate']
-dat %>% ggplot(aes(x=Lactate, y = M2_preds, colour = Anaemic))+  geom_jitter()
+sm_data_analysis$M2_preds=fitted(m2_lactate,re_formula = NA)[, 'Estimate']
+sm_data_analysis %>% filter(Lactate<10) %>% 
+    ggplot(aes(x=Lactate, y = M2_preds, group = interaction(Anaemic,Coma_Final), linetype = Coma, colour = Anaemic))+  geom_line()+theme_minimal()+xlab("Lactate (mmol/L)")+ylab("Predicted probability of death")
 ```
 
 
 ```{r lactate_prognostic_models, fig.width=8, fig.height=8}
-
 h1=smac%>%
   ggplot(aes(x=Lactate, color=`Hb<5g/dL`))+
   geom_density()+theme_minimal()+
