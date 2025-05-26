@@ -472,6 +472,30 @@ dat_all_final = dat_all_final %>%
   `Died within 28 days` = Died & (is.na(Time_to_death) | Time_to_death < (28*24)),
   `Died within 28 days` = ifelse(`Died within 28 days`, 'Yes', 'No'))
 
+dat_all_final$date_admission = ym(dat_all_final$RFSTDTC)
+dat_all_final = dat_all_final %>% select(-USUBJID, -RFSTDTC)
+## Manual correction of base excess values in KEMRI
+ind = which(dat_all_final$STUDY=='KEMRI' &
+  dat_all_final$date_admission>as.Date('1998-01-01') &
+  dat_all_final$`Base Excess_mmol_L` > -2)
+dat_all_final$`Base Excess_mmol_L`[ind] = -1*dat_all_final$`Base Excess_mmol_L`[ind]
+dat_all_final$`Base Excess_mmol_L` = ifelse(dat_all_final$`Base Excess_mmol_L`< -35, NA, dat_all_final$`Base Excess_mmol_L`)
+hist(dat_all_final$`Base Excess_mmol_L`, breaks = 200)
+
+
+## Manual correction of base excess values in FEAST
+ind = which(dat_all_final$STUDY=='FEAST' &
+              dat_all_final$`Base Excess_mmol_L` > 5 & dat_all_final$Bicarbonate_mEq_L<20)
+dat_all_final$`Base Excess_mmol_L`[ind] = -1*dat_all_final$`Base Excess_mmol_L`[ind]
+hist(dat_all_final$`Base Excess_mmol_L`, breaks = 200)
+
+
+dat_all_final$Lactate = dat_all_final$`Lactic Acid_mmol_L`
+dat_all_final = dat_all_final%>% select(-`Lactic Acid_mmol_L`)
+dat_all_final$Lactate = ifelse(dat_all_final$Lactate > 30, NA, dat_all_final$Lactate)
+dat_all_final$Lactate = ifelse(dat_all_final$Lactate > 20, 20, dat_all_final$Lactate)
+hist(dat_all_final$Lactate, breaks = 200)
+
 
 source('hb_data_imputation.R')
 dat_all_final = hb_hct_impute(dat_all_final)

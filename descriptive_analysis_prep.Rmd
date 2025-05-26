@@ -72,7 +72,7 @@ table(sm_data$STUDY)
 Visualise missing data
 
 ```{r missing_data}
-cols_check = c("RFSTDTC","SITEID","ARM","COUNTRY","SEX","Age","Died",
+cols_check = c("SITEID","ARM","COUNTRY","SEX","Age","Died",
                "Time_to_death","Capillary Refill Time_sec","Head Circumference_cm",
                "Heart Rate_beats_min","Height_cm","Mid-Upper Arm Circumference_cm",
                "Respiratory Rate_breaths_min",
@@ -83,7 +83,7 @@ cols_check = c("RFSTDTC","SITEID","ARM","COUNTRY","SEX","Age","Died",
                "Blood in urine","Anemia","Hyperparasitaemia",
                "Anuria","GCS_tot","BCS_tot","para_ul","Malaria_RDT","PfHRP2_ng_ml",
                "Malaria_Positive","Glucose_mmol_L","Hb",
-               "Lactic Acid_mmol_L","Base Excess_mmol_L","Creatinine_umol_L",
+               "Lactate","Base Excess_mmol_L","Creatinine_umol_L",
                "HCT","Leukocytes_10_9_L","Platelets_10_9_L",
                "Urea Nitrogen_mmol_L")
 vis_miss(sm_data %>% select(all_of(cols_check)),warn_large_data = F)
@@ -98,10 +98,6 @@ sm_data %>% group_by(STUDY) %>%
 sm_data$SITEID=as.factor(sm_data$SITEID)
 sm_data$COUNTRY=as.factor(sm_data$COUNTRY)
 sm_data$STUDY=as.factor(sm_data$STUDY)
-
-sm_data$Lactate = sm_data$`Lactic Acid_mmol_L`
-sm_data = sm_data%>% select(-`Lactic Acid_mmol_L`)
-sm_data$Lactate = ifelse(sm_data$Lactate>50,NA,sm_data$Lactate)
 ```
 
 ## Variables in dataset
@@ -140,11 +136,58 @@ sm_data %>% ggplot(aes(x = Age, y = Glucose_mmol_L, colour = Hypoglycaemia))+
 ### Lactate and bicarbonate
 
 ```{r acidosis}
-table(sm_data$STUDY, acidosis_measured=!is.na(sm_data$Lactate) | !is.na(sm_data$Bicarbonate_mEq_L))
-sm_data %>% filter(!is.na(sm_data$Lactate), !is.na(sm_data$Bicarbonate_mEq_L)) %>%
-  ggplot(aes(x = Lactate, y = Bicarbonate_mEq_L, colour = STUDY))+
-  geom_point()+theme_minimal() + geom_smooth() + xlab('Lactate (mmol/L)')+
-  ylab('Bicarbonate (mEq/L)')
+# sm_data %>% filter(STUDY=='KEMRI') %>% 
+#   ggplot(aes(x=date_admission, y = `Base Excess_mmol_L`, colour = Died))+
+#   geom_point()
+sm_data %>% filter(!is.na(Lactate), !is.na(`Base Excess_mmol_L`)) %>% 
+  ggplot(aes(x=Lactate, y = `Base Excess_mmol_L`, colour = `Died within 28 days`))+
+  geom_jitter() +geom_smooth(aes(group=NA))+theme_minimal()+
+  geom_vline(xintercept = 5)+geom_hline(yintercept = -8)+
+  facet_wrap(~STUDY)
+
+p1=sm_data %>% filter(!is.na(Lactate), !is.na(`Base Excess_mmol_L`), !is.na(Hb), `Base Excess_mmol_L`<5) %>% 
+    ggplot(aes(y=Lactate, x = `Base Excess_mmol_L`, colour = Hb<5))+
+    geom_jitter() +geom_smooth()+theme_minimal()+
+    geom_hline(yintercept = 5)+geom_vline(xintercept = -8)
+p2=sm_data %>% filter(!is.na(Lactate), !is.na(Bicarbonate_mEq_L), !is.na(Hb)) %>% 
+    ggplot(aes(y=Lactate, x = Bicarbonate_mEq_L, colour = Hb<5))+
+    geom_jitter() +geom_smooth()+theme_minimal()+
+    geom_hline(yintercept = 5)+geom_vline(xintercept = 15)
+grid.arrange(p1,p2,nrow=1)
+
+sm_data %>% filter(!is.na(Lactate), !is.na(Bicarbonate_mEq_L)) %>%
+  ggplot(aes(x = Lactate, y = Bicarbonate_mEq_L, colour = `Died within 28 days`))+
+  geom_point()+theme_minimal() + geom_smooth(aes(group=NA)) + xlab('Lactate (mmol/L)')+
+  ylab('Bicarbonate (mEq/L)')+theme_minimal()+
+  geom_vline(xintercept = 5)+geom_hline(yintercept = 15)+
+  facet_wrap(~STUDY)
+
+sm_data %>% filter(!is.na(`Base Excess_mmol_L`), !is.na(Bicarbonate_mEq_L)) %>%
+  ggplot(aes(x = `Base Excess_mmol_L`, y = Bicarbonate_mEq_L, colour = `Died within 28 days`))+
+  geom_point()+theme_minimal() + geom_smooth(aes(group=NA)) + xlab('Base excess (mEq/L)')+
+  ylab('Bicarbonate (mEq/L)')+theme_minimal()+
+  geom_vline(xintercept = -8)+geom_hline(yintercept = 15)+
+  facet_wrap(~STUDY)
+
+
+```
+
+imputation of missing lactates
+
+```{r impute_lactate}
+sm_data = sm_data %>% 
+  mutate(acidosis_measured= !is.na(Lactate) | !is.na(Bicarbonate_mEq_L) | !is.na(`Base Excess_mmol_L`))
+table(sm_data$STUDY, sm_data$acidosis_measured)
+ind = which(sm_data$acidosis_measured)
+cols = c('Died','Age_category','Hb','Lactate','Base Excess_mmol_L','Bicarbonate_mEq_L',"Respiratory distress")
+sm_data$Age_category = as.factor(sm_data$Age_category)
+sm_data$Died = as.factor(sm_data$Died_28D)
+sm_data$`Respiratory distress` = as.factor(sm_data$`Respiratory distress`)
+x_in = (sm_data[ind, cols])
+x_imp = mice(x_in, m = 5, method = 'pmm', maxit = 50, seed = 500)
+
+x_imp2 = missRanger(x_in,formula = Lactate ~ Died+Age_category+Hb, num.trees = 100)
+
 ind = which(is.na(sm_data$Lactate) & !is.na(sm_data$Bicarbonate_mEq_L))
 sum(ind)
 mod_lactate_impute = lme4::lmer(Lactate ~ Bicarbonate_mEq_L + (1|STUDY), data = sm_data)
