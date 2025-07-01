@@ -85,7 +85,7 @@ cols_check = c("SITEID","ARM","COUNTRY","SEX","Age","Died",
                "Malaria_Positive","Glucose_mmol_L","Hb",
                "Lactate","Base Excess_mmol_L","Creatinine_umol_L",
                "HCT","Leukocytes_10_9_L","Platelets_10_9_L",
-               "Urea Nitrogen_mmol_L")
+               "Urea Nitrogen_mmol_L",'pH_')
 vis_miss(sm_data %>% select(all_of(cols_check)),warn_large_data = F)
 ```
 
@@ -136,7 +136,6 @@ sm_data %>% ggplot(aes(x = Age, y = Glucose_mmol_L, colour = Hypoglycaemia))+
 ### Lactate and bicarbonate/base excess
 
 ```{r acidosis}
-
 sm_data %>% filter(!is.na(Lactate), !is.na(`Base Excess_mmol_L`)) %>% 
   ggplot(aes(x=Lactate, y = `Base Excess_mmol_L`, colour = `Died within 28 days`))+
   geom_jitter() +geom_smooth(aes(group=NA))+theme_minimal()+
@@ -187,55 +186,63 @@ grid.arrange(p1,p2,p3)
 Impute missing bicarbonate and missing base excess
 
 ```{r}
-sm_data$Base_Excess_mmol_L=sm_data$`Base Excess_mmol_L`
-mod_bicarbonate = gam(Bicarbonate_mEq_L~s(Base_Excess_mmol_L),
-                     data = sm_data %>% filter( !is.na(Bicarbonate_mEq_L)))
-predict(mod_bicarbonate, newdata = data.frame(Base_Excess_mmol_L= -8))
-summary(mod_bicarbonate)
-sm_data$Bicarbonate_mEq_L_imp = NA
-ind = which(!is.na(sm_data$Base_Excess_mmol_L) & !is.na(sm_data$Hb)  & !is.na(sm_data$Age))
-sm_data$Bicarbonate_mEq_L_imp[ind] = predict(mod_bicarbonate, newdata = sm_data[ind,])
+table(is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$`Base Excess_mmol_L`))
+table(!is.na(sm_data$Bicarbonate_mEq_L) & is.na(sm_data$`Base Excess_mmol_L`))
+table(!is.na(sm_data$Bicarbonate_mEq_L) | !is.na(sm_data$`Base Excess_mmol_L`))
+table(!is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$`Base Excess_mmol_L`))
 
-mod_BE = gam(Base_Excess_mmol_L ~ s(Bicarbonate_mEq_L),
-                     data = sm_data %>% filter(!is.na(Age), !is.na(Bicarbonate_mEq_L)))
-predict(mod_BE, newdata = data.frame(Bicarbonate_mEq_L= 15))
-summary(mod_BE)
-sm_data$Base_Excess_mmol_L_imp = NA
-ind = which(!is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$Hb)  & !is.na(sm_data$Age))
-sm_data$Base_Excess_mmol_L_imp[ind] = predict(mod_BE, newdata = sm_data[ind,])
-
-
-sm_data %>% ggplot(aes(x=Base_Excess_mmol_L_imp, y = Bicarbonate_mEq_L_imp, colour = STUDY))+
-  geom_point()+geom_smooth(aes(group=NA))
-
-sm_data %>% ggplot(aes(x=Base_Excess_mmol_L_imp, y = Base_Excess_mmol_L_imp/Bicarbonate_mEq_L_imp, colour = STUDY))+
-  geom_point()
+outliers_bicarb_baseexcess = which(sm_data$Bicarbonate_mEq_L-sm_data$`Base Excess_mmol_L`<15 | sm_data$Bicarbonate_mEq_L-sm_data$`Base Excess_mmol_L`>40)
+sm_data$Bicarbonate_mEq_L[outliers_bicarb_baseexcess]=NA
+sm_data$`Base Excess_mmol_L`[outliers_bicarb_baseexcess]=NA
+# sm_data$Base_Excess_mmol_L=sm_data$`Base Excess_mmol_L`
+# mod_bicarbonate = gam(Bicarbonate_mEq_L~s(Base_Excess_mmol_L),
+#                      data = sm_data %>% filter( !is.na(Bicarbonate_mEq_L)))
+# predict(mod_bicarbonate, newdata = data.frame(Base_Excess_mmol_L= -8))
+# summary(mod_bicarbonate)
+# sm_data$Bicarbonate_mEq_L_imp = NA
+# ind = which(!is.na(sm_data$Base_Excess_mmol_L) & !is.na(sm_data$Hb)  & !is.na(sm_data$Age))
+# sm_data$Bicarbonate_mEq_L_imp[ind] = predict(mod_bicarbonate, newdata = sm_data[ind,])
+# 
+# mod_BE = gam(Base_Excess_mmol_L ~ s(Bicarbonate_mEq_L),
+#                      data = sm_data %>% filter(!is.na(Age), !is.na(Bicarbonate_mEq_L)))
+# predict(mod_BE, newdata = data.frame(Bicarbonate_mEq_L= 15))
+# summary(mod_BE)
+# sm_data$Base_Excess_mmol_L_imp = NA
+# ind = which(!is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$Hb)  & !is.na(sm_data$Age))
+# sm_data$Base_Excess_mmol_L_imp[ind] = predict(mod_BE, newdata = sm_data[ind,])
+# 
+# 
+# sm_data %>% ggplot(aes(x=Base_Excess_mmol_L_imp, y = Bicarbonate_mEq_L_imp, colour = STUDY))+
+#   geom_point()+geom_smooth(aes(group=NA))
+# 
+# sm_data %>% ggplot(aes(x=Base_Excess_mmol_L_imp, y = Base_Excess_mmol_L_imp/Bicarbonate_mEq_L_imp, colour = STUDY))+
+#   geom_point()
 ```
 
 
 imputation of missing lactates
 
 ```{r impute_lactate}
-sm_data = sm_data %>% 
-  mutate(acidosis_measured= !is.na(Lactate) | !is.na(Bicarbonate_mEq_L) | !is.na(`Base Excess_mmol_L`))
-table(sm_data$STUDY, sm_data$acidosis_measured)
-ind = which(sm_data$acidosis_measured)
-cols = c('Died','Age_category','Hb','Lactate','Base Excess_mmol_L','Bicarbonate_mEq_L',"Respiratory distress")
-sm_data$Age_category = as.factor(sm_data$Age_category)
-sm_data$Died = as.factor(sm_data$Died_28D)
-sm_data$`Respiratory distress` = as.factor(sm_data$`Respiratory distress`)
-x_in = (sm_data[ind, cols])
-x_imp = mice(x_in, m = 5, method = 'pmm', maxit = 50, seed = 500)
-
-x_imp2 = missRanger(x_in,formula = Lactate ~ Died+Age_category+Hb, num.trees = 100)
-
-ind = which(is.na(sm_data$Lactate) & !is.na(sm_data$Bicarbonate_mEq_L))
-sum(ind)
-mod_lactate_impute = lme4::lmer(Lactate ~ Bicarbonate_mEq_L + (1|STUDY), data = sm_data)
-summary(mod_lactate_impute)
-preds = predict(mod_lactate_impute, newdata = sm_data[ind, ],re.form=NA)
-sm_data$Lactate[ind] = ifelse(preds>0, preds, 0)
-hist(sm_data$Lactate, breaks = 100)
+# sm_data = sm_data %>% 
+#   mutate(acidosis_measured= !is.na(Lactate) | !is.na(Bicarbonate_mEq_L) | !is.na(`Base Excess_mmol_L`))
+# table(sm_data$STUDY, sm_data$acidosis_measured)
+# ind = which(sm_data$acidosis_measured)
+# cols = c('Died','Age_category','Hb','Lactate','Base Excess_mmol_L','Bicarbonate_mEq_L',"Respiratory distress")
+# sm_data$Age_category = as.factor(sm_data$Age_category)
+# sm_data$Died = as.factor(sm_data$Died_28D)
+# sm_data$`Respiratory distress` = as.factor(sm_data$`Respiratory distress`)
+# x_in = (sm_data[ind, cols])
+# x_imp = mice(x_in, m = 5, method = 'pmm', maxit = 50, seed = 500)
+# 
+# x_imp2 = missRanger(x_in,formula = Lactate ~ Died+Age_category+Hb, num.trees = 100)
+# 
+# ind = which(is.na(sm_data$Lactate) & !is.na(sm_data$Bicarbonate_mEq_L))
+# sum(ind)
+# mod_lactate_impute = lme4::lmer(Lactate ~ Bicarbonate_mEq_L + (1|STUDY), data = sm_data)
+# summary(mod_lactate_impute)
+# preds = predict(mod_lactate_impute, newdata = sm_data[ind, ],re.form=NA)
+# sm_data$Lactate[ind] = ifelse(preds>0, preds, 0)
+# hist(sm_data$Lactate, breaks = 100)
 ```
 
 
@@ -243,9 +250,9 @@ From Nick:
 Incidentally can you do a bicarbonate vs lactate plot separating adults and children. It would be really interesting to look at urea or creatinine versus bicarbonate adjusting for lactate (i.e. two discrete sources of acid) in relation to age (e.g. younger kids vs older kids +adults). That might be a neat way of showing if kids are being affected by their renal impairment.
 
 ```{r}
-sm_data %>% filter(!is.na(Lactate), !is.na(Bicarbonate_mEq_L_imp), !is.na(Age_category),
-                   Bicarbonate_mEq_L_imp<30) %>%
-  ggplot(aes(x=Bicarbonate_mEq_L_imp, y = Lactate, colour = Age_category))+
+sm_data %>% filter(!is.na(Lactate), !is.na(Bicarbonate_mEq_L), !is.na(Age_category),
+                   Bicarbonate_mEq_L<30) %>%
+  ggplot(aes(x=Bicarbonate_mEq_L, y = Lactate, colour = Age_category))+
   geom_point()+theme_minimal()+
   xlab('Bicarbonate (mEq/L)') + ylab('Lactate')
 ```
@@ -422,7 +429,7 @@ sm_data$Age[ind1] = predict(mod_age,newdata = sm_data[ind1,])
 
 ```{r maka_analysis_data}
 #Remove AQ Gambia from analysis data-set as unreliable creatinine values
-sm_data = sm_data %>% group_by(USUBJID) %>%
+sm_data = sm_data %>% 
   mutate(INCLUDE_CC_ANALYSIS = 
            !is.na(Weight_kg) &
            !is.na(Age) &

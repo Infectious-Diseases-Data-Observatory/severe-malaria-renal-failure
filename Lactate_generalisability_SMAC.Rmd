@@ -112,10 +112,10 @@ brms
 ## mgcv version
 sm_data_analysis$STUDY=as.factor(sm_data_analysis$STUDY)
 sm_data_analysis$SITEID=as.factor(sm_data_analysis$SITEID)
-gam_lactate = mgcv::gam(Died ~ s(Lactate, by=interaction(Anaemic,Coma_Final),bs='cr') + Anaemic + Coma_Final + s(SITEID, bs='re'),
+gam_lactate = mgcv::gam(Died ~ s(Lactate, by=interaction(Anaemic,Coma_Final),k=4) + Anaemic + Coma_Final + s(SITEID, bs='re') + s(sqrt(Age)),
           data = sm_data_analysis, family = binomial())
 
-gam_lactate_2 = mgcv::gam(Died ~ s(Lactate, by=interaction(Anaemic,Coma_Final), k=3) + Anaemic + Coma_Final + s(SITEID, bs='re'),
+gam_lactate_2 = mgcv::gam(Died ~ s(Lactate, by=interaction(Anaemic,Coma_Final), k=3) + Anaemic + Coma_Final + s(SITEID, bs='re') + s(sqrt(Age)),
           data = sm_data_analysis, family = binomial())
 
 
@@ -146,9 +146,10 @@ smac = smac %>%
     is.na(LACTATE) ~ 'No lactate measurement',
     is.na(HB) ~ 'No haemoglobin or haematocrit',
     is.na(Died) ~ 'No outcome',
+    is.na(AGE) ~ 'No age',
     T ~ 'INCLUDE'))
 table(smac$Reason_exclude)
-smac = smac %>% filter(!is.na(Died), !is.na(LACTATE), !(is.na(HB))) %>%
+smac = smac %>% filter(Reason_exclude =='INCLUDE') %>%
   mutate(Lactate=LACTATE, Anaemic=ifelse(HB<5,'Yes','No'), Hb=HB)
 ```
 

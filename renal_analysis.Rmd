@@ -83,7 +83,7 @@ sm_data_analysis = sm_data_analysis %>%
     CREAT_ANALYSIS = !is.na(Creatinine_umol_L),
     BUN_CREAT_ANALYSIS = BUN_ANALYSIS & CREAT_ANALYSIS)
 
-cols_check = c("RFSTDTC","SITEID","ARM","COUNTRY","SEX","Age","Died",
+cols_check = c("SITEID","ARM","COUNTRY","SEX","Age","Died",
                "Time_to_death","Capillary Refill Time_sec","Head Circumference_cm",
                "Heart Rate_beats_min","Height_cm","Mid-Upper Arm Circumference_cm",
                "Respiratory Rate_breaths_min",
@@ -105,7 +105,7 @@ Some descriptive data on included patients
 
 ```{r}
 print(aggregate(Age ~ STUDY, data = sm_data_analysis, FUN = quantile))
-print(aggregate(RFSTDTC ~ STUDY, data = sm_data_analysis, FUN = function(x) range(x,na.rm = T)))
+# print(aggregate(RFSTDTC ~ STUDY, data = sm_data_analysis, FUN = function(x) range(x,na.rm = T)))
 print(aggregate(Died ~ STUDY, data = sm_data_analysis, FUN = function(x) round(100*mean(x),1)))
 ```
 
@@ -130,7 +130,8 @@ sm_both %>% ggplot(aes(x=BUN, y=Creatinine_umol_L/BUN, colour = STUDY))+
 Imputation of Creatinine and BUN from each other
 
 ```{r imputation_BUN_Creatinine}
-mod_bun_impute = gam(log10(BUN) ~ s(log10(Creatinine_umol_L)) + s(SITE_STUDY, bs='re') + s(sqrt(Weight_kg)), data = sm_data_analysis)
+mod_bun_impute = gam(log10(BUN) ~ s(log10(Creatinine_umol_L)) + s(SITE_STUDY, bs='re') + s(sqrt(Weight_kg)),
+                     data = sm_data_analysis)
 summary(mod_bun_impute)
 sm_data_analysis$BUN_pred = 10^predict(mod_bun_impute, newdata = sm_data_analysis)
 sm_data_analysis$BUN_imputed = ifelse(is.na(sm_data_analysis$BUN), 
@@ -149,7 +150,7 @@ table(is.na(sm_data_analysis$Creatinine_imputed), is.na(sm_data_analysis$BUN_imp
 
 
 ```{r creatinine_v_bun, fig.width=12, fig.height=8}
-p1=sm_data_analysis %>%
+p1=sm_data_analysis %>% filter(!is.na(Creatinine_umol_L), !is.na(BUN)) %>%
   ggplot(aes(x=Creatinine_umol_L, y = BUN, colour = STUDY))+
   geom_point(alpha=0.5)+geom_smooth(se = F)+
   geom_hline(yintercept = 20)+geom_vline(xintercept = 265)+
@@ -166,7 +167,7 @@ p1=sm_data_analysis %>%
     legend.title = element_text(size = 10))
 
 
-p2=sm_data_analysis %>%
+p2=sm_data_analysis %>% filter(!is.na(Creatinine_umol_L), !is.na(BUN)) %>%
   ggplot(aes(x=(Creatinine_umol_L/BUN), colour = STUDY))+
   geom_density()+theme_bw(base_size = 20)+
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))+
@@ -178,6 +179,49 @@ p2=sm_data_analysis %>%
 grid.arrange(p1,p2,nrow=1)
 ```
 
+
+```{r weight_age, fig.width=12, fig.height=8}
+writeLines(sprintf('n=%s patients from %s studies have creatinine measured',sum(!is.na(sm_data_analysis$Creatinine_umol_L)), length(unique(sm_data_analysis$STUDY[!is.na(sm_data_analysis$Creatinine_umol_L)]))))
+
+p1 = sm_data_analysis %>%
+  ggplot(aes(x=Weight_kg, y = Creatinine_umol_L, colour = STUDY))+
+  geom_jitter(height = 0.01, width = .1, alpha=my_alpha)+
+  ylab('Creatinine (umol/L)')+xlab('Weight (kg)')+
+  geom_hline(yintercept = 265)+
+  scale_x_continuous(transform  ='sqrt',breaks = sqrt_breaks) + 
+  geom_smooth(se=SEsmooth)+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
+  annotation_logticks(sides='l') +
+  theme_bw(base_size = 15)+
+  theme(
+    legend.position = c(0.97, 0.03), 
+    legend.justification = c(1, 0),
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),
+    legend.margin = margin(6, 6, 6, 6),  
+    legend.text = element_text(size = 7),
+    legend.title = element_text(size = 8))
+
+writeLines(sprintf('n=%s patients from %s studies have BUN measured',sum(!is.na(sm_data_analysis$BUN)), length(unique(sm_data_analysis$STUDY[!is.na(sm_data_analysis$BUN)]))))
+
+p2=sm_data_analysis%>%
+  ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
+  geom_jitter(height = 0.03, width = .1, alpha=my_alpha)+
+  ylab('BUN (mmol/L)')+xlab('Weight (kg)')+
+  geom_hline(yintercept = 20)+
+  scale_x_continuous(transform='sqrt',breaks = sqrt_breaks) +
+  geom_smooth(se=SEsmooth)+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
+  annotation_logticks(sides='l') + theme_bw(base_size = 15)+
+  theme(
+    legend.position = c(0.97, 0.03),        # Position the legend inside the plot (bottom-right corner)
+    legend.justification = c(1, 0),       # Justify the legend to the bottom-right
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),  # Optional: adds border to legend
+    legend.margin = margin(6, 6, 6, 6),    # Adjust the margin around the legend if needed
+    legend.text = element_text(size = 7),
+    legend.title = element_text(size = 8))
+
+grid.arrange(p1,p2,nrow=1)
+```
 
 ## Mortality models
 
@@ -410,7 +454,7 @@ test_data$pred_mod_creat_imputed =
 
 
 ```{r creat_full_model}
-test_data %>%
+p1=test_data %>%
   ggplot(aes(x = Creatinine_umol_L, y = pred_mod_creat_full, 
              colour =Weight_category,linetype = Coma,
              group = interaction(Age,Weight_category,Coma)))+
@@ -418,9 +462,16 @@ test_data %>%
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
   annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('Creatinine (umol/L)')+
   geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)+
-  ggtitle('Creatinine complete case analysis')
+  ggtitle('Creatinine')+
+  theme(
+    legend.position = c(0.4, 0.5),        # Position the legend inside the plot (bottom-right corner)
+    legend.justification = c(1, 0),       # Justify the legend to the bottom-right
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),  # Optional: adds border to legend
+    legend.margin = margin(6, 6, 6, 6),    # Adjust the margin around the legend if needed
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 10))
 
-test_data %>%
+p2=test_data %>%
   ggplot(aes(x = Creatinine_umol_L, y = pred_mod_creat_remove_tract, 
              colour =Weight_category,linetype = Coma,
              group = interaction(Age,Weight_category,Coma)))+
@@ -428,13 +479,13 @@ test_data %>%
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=crea_limits) +
   annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('Creatinine (umol/L)')+
   geom_vline(xintercept = 265)+geom_hline(yintercept = mortality_threshold)+
-  ggtitle('Creatinine complete case analysis - removing TRACT')
+  ggtitle('Creatinine - without TRACT')+theme(legend.position = 'none')
 ```
 
 
 
 ```{r bun_full_model}
-test_data %>%
+p3=test_data %>%
   ggplot(aes(x = BUN, y = pred_mod_bun_full, 
              colour =Weight_category,linetype = Coma,
              group = interaction(Age,Weight_category,Coma)))+
@@ -442,9 +493,9 @@ test_data %>%
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
   annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('BUN (mmol/L)')+
   geom_vline(xintercept = 20)+geom_hline(yintercept = mortality_threshold)+
-  ggtitle('BUN complete case analysis')
+  ggtitle('Blood urea')+theme(legend.position = 'none')
 
-test_data %>%
+p4=test_data %>%
   ggplot(aes(x = BUN, y = pred_mod_bun_remove_tract, 
              colour =Weight_category,linetype = Coma,
              group = interaction(Age,Weight_category,Coma)))+
@@ -452,8 +503,12 @@ test_data %>%
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,limits=bun_limits) +
   annotation_logticks(sides='b')+theme_bw(base_size = 15)+xlab('BUN (mmol/L)')+
   geom_vline(xintercept = 20)+geom_hline(yintercept = mortality_threshold)+
-    ggtitle('BUN complete case analysis - removing TRACT')
+    ggtitle('Blood urea - without TRACT')+theme(legend.position = 'none')
 
+```
+
+```{r model_mortality_creat_bun}
+grid.arrange(p1,p2,p3,p4)
 ```
 
 
