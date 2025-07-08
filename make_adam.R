@@ -259,7 +259,13 @@ renal_FUP = lb_SM %>% filter(LBTEST %in% c('Creatinine','Urea Nitrogen'),
                              !EPOCH %in% c('BASELINE','SCREENING'),
                              STUDYID=='ZQEVB', VISIT %in% c("28d","90d","180d")) %>%
   group_by(USUBJID, LBTEST) %>% 
-  mutate(baseline_mean = mean(LBSTRESN)) %>%
+  mutate(
+    outlier_bun = ifelse(LBSTRESN>10 & LBTEST== 'Urea Nitrogen',T,F),
+    outlier_creat = ifelse(LBSTRESN>100 & LBTEST== 'Creatinine',T,F),
+    baseline_mean = mean(LBSTRESN))
+xx = renal_FUP %>% filter(outlier_bun | outlier_creat)
+ids_exclude = unique(xx$USUBJID)
+renal_FUP = renal_FUP %>% filter(!USUBJID %in% ids_exclude) %>%
   distinct(USUBJID, .keep_all = T) %>%
   select(USUBJID,baseline_mean, LBTEST)%>%
   pivot_wider(id_cols = USUBJID,names_from = LBTEST,values_from = baseline_mean,names_prefix = 'Baseline_')
