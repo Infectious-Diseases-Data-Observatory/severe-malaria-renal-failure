@@ -171,6 +171,7 @@ sm_data %>% filter(!is.na(`Baseline_Urea Nitrogen`), Baseline_Creatinine<100) %>
 
 xx = sm_data %>% filter(!is.na(Baseline_Creatinine), Baseline_Creatinine<100)
 xx$MUAC = xx$`Mid-Upper Arm Circumference_cm`
+xx$Baseline_BUN = xx$`Baseline_Urea Nitrogen`
 mod=lm(Baseline_Creatinine ~ scale(Height_cm)+SEX, data = xx)
 summary(mod)
 
@@ -178,9 +179,9 @@ mod_creat_baseline=stan_lm(Baseline_Creatinine ~ scale(Age) + scale(Weight_kg)+s
             data = xx, prior = R2(0.5))
 plot(mod_creat_baseline,pars = c('scale(Age)','scale(Weight_kg)','scale(Height_cm)','SEXM','scale(MUAC)'))
 
-mod_bun_baseline=stan_lm(Baseline_Creatinine ~ scale(Age) + scale(Weight_kg)+scale(Height_cm)+SEX+scale(MUAC),
+mod_bun_baseline=stan_lm(Baseline_BUN ~ scale(Age) + scale(Weight_kg)+scale(Height_cm)+SEX+scale(MUAC),
             data = xx, prior = R2(0.5))
-plot(mod_creat_baseline,pars = c('scale(Age)','scale(Weight_kg)','scale(Height_cm)','SEXM','scale(MUAC)'))
+plot(mod_bun_baseline,pars = c('scale(Age)','scale(Weight_kg)','scale(Height_cm)','SEXM','scale(MUAC)'))
 ```
 
 Pottel age-based equation, where eGFR=107.3/(SCr/Q)
