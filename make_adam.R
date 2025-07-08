@@ -255,9 +255,18 @@ ind = which(lb_SM$LBTEST=='Carbon Dioxide' & is.na(lb_SM$LBSTRESN) & lb_SM$STUDY
 lb_SM$LBSTRESN[ind]=lb_SM$LBORRES[ind]
 
 lb_SM$LBSTRESN = as.numeric(lb_SM$LBSTRESN)
+renal_FUP = lb_SM %>% filter(LBTEST %in% c('Creatinine','Urea Nitrogen'),
+                             !EPOCH %in% c('BASELINE','SCREENING'),
+                             STUDYID=='ZQEVB', VISIT %in% c("28d","90d","180d")) %>%
+  group_by(USUBJID, LBTEST) %>% 
+  mutate(baseline_mean = mean(LBSTRESN)) %>%
+  distinct(USUBJID, .keep_all = T) %>%
+  select(USUBJID,baseline_mean, LBTEST)%>%
+  pivot_wider(id_cols = USUBJID,names_from = LBTEST,values_from = baseline_mean,names_prefix = 'Baseline_')
+
 
 # key_baseline_vars = c('Hematocrit','Hemoglobin',"Base Excess","Lactic Acid",
-                      # "Glucose","Platelets","Creatinine","Leukocytes","Urea Nitrogen")
+# "Glucose","Platelets","Creatinine","Leukocytes","Urea Nitrogen")
 baseline_lb_SM = lb_SM %>% filter(EPOCH %in% c('BASELINE','SCREENING'),
                                   # LBTEST %in% key_baseline_vars,
                                   !LBSPEC %in% c('CSF','CEREBROSPINAL FLUID')) %>%
@@ -344,14 +353,14 @@ mb_SM_para = mb_SM_para %>%
     !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml>100 ~ T,
     !is.na(para_ul) & para_ul>0 ~ T,
     !is.na(Malaria_RDT) & Malaria_RDT ~ T,
-
+    
     !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml==0 ~ F,
     !is.na(para_ul) & para_ul==0 ~ F,
     !is.na(Malaria_RDT) & !Malaria_RDT ~ F,
-
+    
     T ~ NA
-   ))
-  # Malaria_Positive = ifelse(STUDYID=='UUJKO', T, Malaria_Positive))
+  ))
+# Malaria_Positive = ifelse(STUDYID=='UUJKO', T, Malaria_Positive))
 table(mb_SM_para$STUDYID, mb_SM_para$Malaria_Positive,useNA = 'ifany')
 
 ## Make merged dataset
@@ -372,6 +381,8 @@ dat_all = merge(dat_all, baseline_vs_SM_wide, by = col_ids, all = T)
 dat_all = merge(dat_all, clinical_baseline, by = col_ids, all = T)
 dat_all = merge(dat_all, mb_SM_para, by = col_ids, all = T)
 dat_all = merge(dat_all, baseline_lb_SM_wide, by = col_ids, all = T)
+### Add the normal creatinines in the TRACT study
+dat_all = merge(dat_all, renal_FUP, by = 'USUBJID', all = T)
 
 dat_all_final = dat_all%>%
   mutate(
@@ -416,7 +427,14 @@ dat_all_final$Creatinine_umol_L =
 
 
 dat_all_final$Age = dat_all_final$Age/12
-dat_all_final$Age_category = cut(dat_all_final$Age, breaks = c(0, 1, 2, 5, 15, 100))
+dat_all_final$Age_category = cut(dat_all_final$Age, breaks = c(0, 2, 5, 15, 100))
+dat_all_final = dat_all_final %>%
+  mutate(Age_category = recode(Age_category,
+                               "(0,2]" = "≤2",
+                               "(2,5]" = "(2,5]",
+                               "(5,15]" = "(5,15]",
+                               "(15,100]" = ">15"))
+
 dat_all_final$Age_category_pch = as.numeric(dat_all_final$Age_category)
 
 dat_all_final %>% ggplot(aes(x=Age, y=Weight_kg, colour = STUDY))+geom_point()+
@@ -442,8 +460,11 @@ dat_all_final$Weight_kg[ind_pred] =
   predict(mod_smooth,
           newdata = dat_all_final[ind_pred, c('Age','COUNTRY')], exclude="s(COUNTRY,bs='re')")
 
-dat_all_final$Weight_category = cut(dat_all_final$Weight_kg, breaks = c(0, 25, 100))
-
+dat_all_final$Weight_category = cut(dat_all_final$Weight_kg, breaks = c(0, 30, 100))
+dat_all_final = dat_all_final %>%
+  mutate(Weight_category = recode(Weight_category,
+                                  "(0,30]" = "≤30",
+                                  "(30,100]" = ">30"))
 dat_all_final$STUDY_color = brewer.pal(n = 12, name = 'Paired')[as.numeric(as.factor(dat_all_final$STUDY))]
 
 
@@ -476,8 +497,8 @@ dat_all_final$date_admission = ym(dat_all_final$RFSTDTC)
 dat_all_final = dat_all_final %>% select(-USUBJID, -RFSTDTC)
 ## Manual correction of base excess values in KEMRI
 ind = which(dat_all_final$STUDY=='KEMRI' &
-  dat_all_final$date_admission>as.Date('1998-01-01') &
-  dat_all_final$`Base Excess_mmol_L` > -2)
+              dat_all_final$date_admission>as.Date('1998-01-01') &
+              dat_all_final$`Base Excess_mmol_L` > -2)
 dat_all_final$`Base Excess_mmol_L`[ind] = -1*dat_all_final$`Base Excess_mmol_L`[ind]
 dat_all_final$`Base Excess_mmol_L` = ifelse(dat_all_final$`Base Excess_mmol_L`< -35, NA, dat_all_final$`Base Excess_mmol_L`)
 hist(dat_all_final$`Base Excess_mmol_L`, breaks = 200)
@@ -499,6 +520,8 @@ hist(dat_all_final$Lactate, breaks = 200)
 
 source('hb_data_imputation.R')
 dat_all_final = hb_hct_impute(dat_all_final)
+
+
 write_csv(dat_all_final, file = 'Data/adam_out.csv')
 
 

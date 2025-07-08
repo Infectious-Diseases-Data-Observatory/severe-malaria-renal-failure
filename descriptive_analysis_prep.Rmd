@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
+knitr::opts_chunk$set(cache = F, cache.comments = FALSE,
                       echo = F, include = TRUE, 
                       fig.width = 8, fig.height = 8,
                       fig.pos = 'H',dev = 'png', dpi = 300)
@@ -85,7 +85,7 @@ cols_check = c("SITEID","ARM","COUNTRY","SEX","Age","Died",
                "Malaria_Positive","Glucose_mmol_L","Hb",
                "Lactate","Base Excess_mmol_L","Creatinine_umol_L",
                "HCT","Leukocytes_10_9_L","Platelets_10_9_L",
-               "Urea Nitrogen_mmol_L",'pH_')
+               "Urea Nitrogen_mmol_L",'pH_', 'Baseline_Creatinine','Baseline_Urea Nitrogen')
 vis_miss(sm_data %>% select(all_of(cols_check)),warn_large_data = F)
 ```
 
@@ -246,8 +246,7 @@ imputation of missing lactates
 ```
 
 
-From Nick:
-Incidentally can you do a bicarbonate vs lactate plot separating adults and children. It would be really interesting to look at urea or creatinine versus bicarbonate adjusting for lactate (i.e. two discrete sources of acid) in relation to age (e.g. younger kids vs older kids +adults). That might be a neat way of showing if kids are being affected by their renal impairment.
+
 
 ```{r}
 sm_data %>% filter(!is.na(Lactate), !is.na(Bicarbonate_mEq_L), !is.na(Age_category),
@@ -427,7 +426,7 @@ sm_data$Age[ind1] = predict(mod_age,newdata = sm_data[ind1,])
 
 ## Make analysis dataset
 
-```{r maka_analysis_data}
+```{r make_analysis_data}
 #Remove AQ Gambia from analysis data-set as unreliable creatinine values
 sm_data = sm_data %>% 
   mutate(INCLUDE_CC_ANALYSIS = 
@@ -446,7 +445,7 @@ table(sm_data$STUDY, sm_data$INCLUDE_CC_ANALYSIS)
 table(sm_data$STUDY, sm_data$Malaria_Positive,useNA = 'ifany')
 
 print(aggregate(Age ~ STUDY+INCLUDE_CC_ANALYSIS, data = sm_data, FUN = quantile))
-print(aggregate(RFSTDTC ~ STUDY, data = sm_data, FUN = function(x) range(x,na.rm = T)))
+# print(aggregate(RFSTDTC ~ STUDY, data = sm_data, FUN = function(x) range(x,na.rm = T)))
 print(aggregate(Died ~ STUDY, data = sm_data, FUN = function(x) round(100*mean(x),1)))
 ```
 
