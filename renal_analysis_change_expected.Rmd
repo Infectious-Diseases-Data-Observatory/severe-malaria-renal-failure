@@ -27,6 +27,7 @@ library(gtools)
 library(broom)
 library(zscorer)
 library(mice)
+library(rstanarm)
 # library(tidybayes)
 #library(worlddatr)
 
@@ -75,8 +76,6 @@ sm_data = readr::read_csv(file = 'Data/Analysis_data.csv')
 ```
 
 
-
-
 ## Weight for age z-scores
 
 ```{r}
@@ -93,6 +92,9 @@ sm_data %>% filter(!is.na(wfaz), STUDY != 'Chittagong') %>%
   theme_minimal() + xlab('Age (years)')+ylab('Weight for age z-score')+
   facet_wrap(~STUDY)
 ```
+
+
+make analysis dataset
 
 ```{r}
 sm_data_analysis = sm_data %>% 
@@ -133,7 +135,7 @@ p1=sm_data %>% filter(!is.na(Baseline_Creatinine), Baseline_Creatinine<100) %>%
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+
   xlab('Weight (kg)')+ylab('Normal creatinine (umol/L)')
 
-eGFR=130
+eGFR=130 # Using Pottel equation
 p2=sm_data %>% filter(!is.na(Baseline_Creatinine), Baseline_Creatinine<100) %>%
   ggplot(aes(x=Age, y = Baseline_Creatinine))+geom_point()+
   geom_abline(slope = (107.3/eGFR)*0.0270*88.4,
@@ -175,9 +177,10 @@ xx$Baseline_BUN = xx$`Baseline_Urea Nitrogen`
 mod=lm(Baseline_Creatinine ~ scale(Height_cm)+SEX, data = xx)
 summary(mod)
 
-mod_creat_baseline=stan_lm(Baseline_Creatinine ~ scale(Age) + scale(Weight_kg)+scale(Height_cm)+SEX+scale(MUAC),
+mod_creat_baseline=stan_lm(Baseline_Creatinine ~ Age+Height_cm+SEX+MUAC,
             data = xx, prior = R2(0.5))
 plot(mod_creat_baseline,pars = c('scale(Age)','scale(Weight_kg)','scale(Height_cm)','SEXM','scale(MUAC)'))
+plot(mod_creat_baseline,pars = c('Age','Height_cm','SEXM','MUAC'))
 
 mod_bun_baseline=stan_lm(Baseline_BUN ~ scale(Age) + scale(Weight_kg)+scale(Height_cm)+SEX+scale(MUAC),
             data = xx, prior = R2(0.5))
