@@ -22,10 +22,19 @@ sm_data = sm_data[, key_cols ] %>%
          # across(c(`Respiratory distress`,Shock,Hypoglycaemia,Seizure,
          #          Jaundice,Hyperparasitaemia,Anemia), as.numeric),
          log10_BUN = log10(BUN),
-         log10_Creatinine = log10(Creatinine_umol_L))
+         log10_Creatinine = log10(Creatinine_umol_L)) %>% select(-Creatinine_umol_L, -BUN)
+colnames(sm_data)
+vis_miss(sm_data )
+sm_data %>% ggplot(aes(x=Age, y = Height_cm, colour = STUDY))+geom_point()
 
-imp_list = mice(sm_data, m = 5,  printFlag = T, maxit = 15)
+imp_list = mice(sm_data, m = 1,  printFlag = T, maxit = 15,
+                method = c("","","norm","","norm","norm","norm","norm","rf","rf","norm","norm","norm","norm"))
+xx = complete(imp_list,action = 1)
+numeric_df <- xx %>% select(where(is.numeric))
 
+# Create pairwise plots
+ggpairs(numeric_df)
+xx %>% ggplot(aes(x=Age, y = Height_cm, colour = STUDY))+geom_point()
 f_name = 'RData/imputed_dataset.RData'
 save(imp_list, file = f_name)
 
