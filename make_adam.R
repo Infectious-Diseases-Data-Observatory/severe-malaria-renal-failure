@@ -258,7 +258,7 @@ lb_SM$LBSTRESN = as.numeric(lb_SM$LBSTRESN)
 renal_FUP = lb_SM %>% filter(LBTEST %in% c('Creatinine','Urea Nitrogen'),
                              !EPOCH %in% c('BASELINE','SCREENING'),
                              STUDYID=='ZQEVB', VISIT %in% c("28d","90d","180d")) %>%
-  group_by(USUBJID, LBTEST) %>% 
+  group_by(USUBJID, LBTEST) %>%
   mutate(
     outlier_bun = ifelse(LBSTRESN>10 & LBTEST== 'Urea Nitrogen',T,F),
     outlier_creat = ifelse(LBSTRESN>100 & LBTEST== 'Creatinine',T,F),
@@ -359,11 +359,11 @@ mb_SM_para = mb_SM_para %>%
     !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml>100 ~ T,
     !is.na(para_ul) & para_ul>0 ~ T,
     !is.na(Malaria_RDT) & Malaria_RDT ~ T,
-    
+
     !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml==0 ~ F,
     !is.na(para_ul) & para_ul==0 ~ F,
     !is.na(Malaria_RDT) & !Malaria_RDT ~ F,
-    
+
     T ~ NA
   ))
 # Malaria_Positive = ifelse(STUDYID=='UUJKO', T, Malaria_Positive))
@@ -487,6 +487,11 @@ dat_all_final$BUN[ind]=NA
 # Manual correction time to death in AQUAMAT
 ind = which(dat_all_final$Time_to_death > 8000 & dat_all_final$STUDY=='AQUAMAT')
 dat_all_final$Time_to_death[ind]=10*24
+
+# Remove 999 heigh values in TRACT
+ind = which(dat_all_final$Height_cm > 200 & dat_all_final$STUDY=='TRACT')
+dat_all_final$Height_cm[ind]=NA
+
 
 table(is.na(dat_all_final$Hypoglycaemia) & !is.na(dat_all_final$Glucose_mmol_L))
 dat_all_final = dat_all_final %>%

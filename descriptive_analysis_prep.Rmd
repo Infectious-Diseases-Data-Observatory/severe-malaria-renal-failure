@@ -120,6 +120,23 @@ sm_data %>% filter(STUDY=='TRACT') %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, co
 ```
 
 
+### Age, weight and height
+
+```{r outliers_age_weight_height}
+ind_outliers = sm_data$Age==0 |
+  sm_data$Height_cm<48 |
+  sm_data$Height_cm<100 & sm_data$Weight_kg>40
+which(ind_outliers)
+plot(sm_data$Height_cm, sm_data$Weight_kg, col=as.numeric(ind_outliers)+1)
+plot(sm_data$Age, sm_data$Weight_kg, col=as.numeric(ind_outliers)+1)
+plot(sm_data$Age, sm_data$Height_cm, col=as.numeric(ind_outliers)+1)
+
+sm_data$Height_cm[sm_data$Height_cm<48]=NA
+sm_data$Height_cm[sm_data$Height_cm<100 & sm_data$Weight_kg>40]=NA
+sm_data$Age[sm_data$Age==0]=NA
+```
+
+
 
 ### Hypoglycaemia
 

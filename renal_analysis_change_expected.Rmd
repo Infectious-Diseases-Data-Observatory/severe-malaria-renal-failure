@@ -129,62 +129,69 @@ rm(imp_list)
 ## Baseline creatinines
 
 ```{r}
-p1=sm_data %>% filter(!is.na(Baseline_Creatinine), Baseline_Creatinine<100) %>%
-  ggplot(aes(x=Weight_kg, y = Baseline_Creatinine, colour = Age_category))+geom_point()+
-  scale_x_sqrt()+
+p1=sm_data %>% filter(!is.na(Baseline_Creatinine)) %>%
+  ggplot(aes(x=Weight_kg, y = Baseline_Creatinine))+geom_point()+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+
-  xlab('Weight (kg)')+ylab('Normal creatinine (umol/L)')
-
-eGFR=130 # Using Pottel equation
-p2=sm_data %>% filter(!is.na(Baseline_Creatinine), Baseline_Creatinine<100) %>%
+  xlab('Weight (kg)')+ylab('Normal creatinine (umol/L)')+geom_smooth(method=MASS::rlm)
+summary(lm(Baseline_Creatinine~Weight_kg, data = sm_data))
+eGFR=120 # Using Pottel equation
+p2=sm_data %>% filter(!is.na(Baseline_Creatinine)) %>%
   ggplot(aes(x=Age, y = Baseline_Creatinine))+geom_point()+
   geom_abline(slope = (107.3/eGFR)*0.0270*88.4,
               intercept = (107.3/eGFR)*0.2329*88.4)+
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+scale_x_sqrt()+
-  xlab('Age (years)')+ylab('Normal creatinine (umol/L)')
-
-grid.arrange(p1,p2)
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+
+  xlab('Age (years)')+ylab('Normal creatinine (umol/L)')+geom_smooth(method=MASS::rlm)
+summary(lm(Baseline_Creatinine~Age, data = sm_data))
+p3=sm_data %>% filter(!is.na(Baseline_Creatinine)) %>%
+  ggplot(aes(x=Height_cm, y = Baseline_Creatinine))+geom_point()+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+
+  xlab('Height (cm)')+ylab('Normal creatinine (umol/L)')+geom_smooth(method=MASS::rlm)
+summary(lm(Baseline_Creatinine~Height_cm, data = sm_data))
+p4=sm_data %>% filter(!is.na(Baseline_Creatinine)) %>%
+  ggplot(aes(x=wfaz, y = Baseline_Creatinine))+geom_point()+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+
+  xlab('Weight-for-age z-score')+ylab('Normal creatinine (umol/L)')+geom_smooth(method=MASS::rlm)
+summary(lm(Baseline_Creatinine~wfaz, data = sm_data))
+grid.arrange(p1,p2,p3,p4)
 
 p1=sm_data %>% filter(!is.na(`Baseline_Urea Nitrogen`)) %>%
   ggplot(aes(x=Weight_kg, y = `Baseline_Urea Nitrogen`, colour = Age_category))+geom_point()+scale_x_sqrt()+
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+
+  scale_y_log10()+theme_minimal()+
   xlab('Weight (kg)')+ylab('Normal BUN (mmol/L)')
 
 p2=sm_data %>% filter(!is.na(`Baseline_Urea Nitrogen`)) %>%
   ggplot(aes(x=Age, y = `Baseline_Urea Nitrogen`))+geom_point()+
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+scale_x_sqrt()+
+  scale_y_log10()+theme_minimal()+scale_x_sqrt()+
   xlab('Age (years)')+ylab('Normal BUN (mmol/L)')
 
 grid.arrange(p1,p2)
 
-sm_data %>% filter(!is.na(`Baseline_Urea Nitrogen`), Baseline_Creatinine<100) %>%
+sm_data %>% filter(!is.na(`Baseline_Urea Nitrogen`)) %>%
   ggplot(aes(x=Baseline_Creatinine, y = `Baseline_Urea Nitrogen`))+geom_point()+
   scale_y_log10()+
   scale_x_log10()+
   theme_minimal()+
   xlab('Normal Creatinine (umol/L)')+ylab('Normal BUN (mmol/L)')
 
-sm_data %>% filter(!is.na(`Baseline_Urea Nitrogen`), Baseline_Creatinine<100) %>%
+sm_data %>% filter(!is.na(`Baseline_Urea Nitrogen`)) %>%
   ggplot(aes(x=Baseline_Creatinine / `Baseline_Urea Nitrogen`))+geom_histogram()+
   scale_x_log10()+
   theme_minimal()+
   xlab('Normal Creatinine (umol/L)')+ylab('Normal BUN (mmol/L)')
 
 
-xx = sm_data %>% filter(!is.na(Baseline_Creatinine), Baseline_Creatinine<100)
+xx = sm_data %>% filter(!is.na(Baseline_Creatinine) | !is.na(`Baseline_Urea Nitrogen`))
 xx$MUAC = xx$`Mid-Upper Arm Circumference_cm`
 xx$Baseline_BUN = xx$`Baseline_Urea Nitrogen`
-mod=lm(Baseline_Creatinine ~ scale(Height_cm)+SEX, data = xx)
-summary(mod)
-
-mod_creat_baseline=stan_lm(Baseline_Creatinine ~ Age+Height_cm+SEX+MUAC,
+mod_creat_baseline=stan_lm(Baseline_Creatinine ~ Age+Height_cm+`Mid-Upper Arm Circumference_cm`,
             data = xx, prior = R2(0.5))
-plot(mod_creat_baseline,pars = c('scale(Age)','scale(Weight_kg)','scale(Height_cm)','SEXM','scale(MUAC)'))
-plot(mod_creat_baseline,pars = c('Age','Height_cm','SEXM','MUAC'))
+# plot(mod_creat_baseline,pars = c('Age','Height_cm','SEXM',`Mid-Upper Arm Circumference_cm`))
+summary(mod_creat_baseline)
 
 mod_bun_baseline=stan_lm(Baseline_BUN ~ scale(Age) + scale(Weight_kg)+scale(Height_cm)+SEX+scale(MUAC),
             data = xx, prior = R2(0.5))
 plot(mod_bun_baseline,pars = c('scale(Age)','scale(Weight_kg)','scale(Height_cm)','SEXM','scale(MUAC)'))
+summary(mod_bun_baseline)
 ```
 
 Pottel age-based equation, where eGFR=107.3/(SCr/Q)
@@ -206,6 +213,19 @@ plot(sm_data_analysis$Age, sm_data_analysis$bSrc_adults,
 lines(sm_data_analysis$Age, sm_data_analysis$bSrc_children,col='red',lwd=2)
 ```
 
+
+TRACT predicted baseline creatinine for children
+```{r}
+preds_baseline_creat = list()
+for(i in 1:length(imp_data)){
+  preds_baseline_creat[[i]] = colMeans(posterior_predict(object = mod_creat_baseline, newdata = imp_data[[i]]))
+}
+plot(preds_baseline_creat[[1]], preds_baseline_creat[[2]])
+preds_baseline_creat = colMeans(do.call(base::rbind, preds_baseline_creat))
+sm_data_analysis$bSrc_children_tract = preds_baseline_creat
+sm_data_analysis %>% filter(Age<15) %>%
+  ggplot(aes(x=bSrc_children, y = bSrc_children_tract))+geom_point()
+```
 
 
 is there heterogeneity by age/weight?
