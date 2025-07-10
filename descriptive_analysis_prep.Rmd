@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(cache = F, cache.comments = FALSE,
+knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
                       echo = F, include = TRUE, 
                       fig.width = 8, fig.height = 8,
                       fig.pos = 'H',dev = 'png', dpi = 300)
@@ -23,6 +23,8 @@ library(RColorBrewer)
 library(grid)
 library(gridExtra)
 library(naniar)
+library(scales)
+
 #library(worlddatr)
 
 conflicts_prefer(dplyr::filter)
@@ -169,13 +171,13 @@ sm_data %>% filter(!is.na(Lactate), !is.na(`Base Excess_mmol_L`)) %>%
   facet_wrap(~STUDY)
 
 p1=sm_data %>% filter(!is.na(Lactate), !is.na(`Base Excess_mmol_L`), !is.na(Hb), `Base Excess_mmol_L`<5) %>% 
-    ggplot(aes(y=Lactate, x = `Base Excess_mmol_L`, colour = Hb<5))+
-    geom_jitter() +geom_smooth()+theme_minimal()+
-    geom_hline(yintercept = 5)+geom_vline(xintercept = -8)
+  ggplot(aes(y=Lactate, x = `Base Excess_mmol_L`, colour = Hb<5))+
+  geom_jitter() +geom_smooth()+theme_minimal()+
+  geom_hline(yintercept = 5)+geom_vline(xintercept = -8)
 p2=sm_data %>% filter(!is.na(Lactate), !is.na(Bicarbonate_mEq_L), !is.na(Hb)) %>% 
-    ggplot(aes(y=Lactate, x = Bicarbonate_mEq_L, colour = Hb<5))+
-    geom_jitter() +geom_smooth()+theme_minimal()+
-    geom_hline(yintercept = 5)+geom_vline(xintercept = 15)
+  ggplot(aes(y=Lactate, x = Bicarbonate_mEq_L, colour = Hb<5))+
+  geom_jitter() +geom_smooth()+theme_minimal()+
+  geom_hline(yintercept = 5)+geom_vline(xintercept = 15)
 grid.arrange(p1,p2,nrow=1)
 
 sm_data %>% filter(!is.na(Lactate), !is.na(Bicarbonate_mEq_L)) %>%
@@ -385,19 +387,19 @@ sm_data %>%
 #Remove AQ Gambia from analysis data-set as unreliable creatinine values
 sm_data = sm_data %>% 
   mutate(INCLUDE_CC_ANALYSIS = !(
-           (is.na(Weight_kg) & is.na(Age) & is.na(Height_cm)) | # age, weight and height all missing
-           is.na(Malaria_Positive) | # no malaria confirmation
-           is.na(Died) | # no outcome
-           (is.na(Creatinine_umol_L) & is.na(BUN)) | # no creatinine or bun
-           is.na(Coma_Final) | # no coma status
-           !Malaria_Positive |
-           STUDY=='AQ Gambia'),
-         
-         INCLUDE_CC_ANALYSIS_SENSITIVITY = # just core variables, don't exclude based on malaria confirmation or the AQ Gambia study
-           !(is.na(Weight_kg) |is.na(Age)) & # both age and weight missing
-           !is.na(Died) & # no outcome
-           (!is.na(Creatinine_umol_L) | !is.na(BUN)) & # no creatinine or bun
-           !is.na(Coma_Final) )
+    (is.na(Weight_kg) & is.na(Age) & is.na(Height_cm)) | # age, weight and height all missing
+      is.na(Malaria_Positive) | # no malaria confirmation
+      is.na(Died) | # no outcome
+      (is.na(Creatinine_umol_L) & is.na(BUN)) | # no creatinine or bun
+      is.na(Coma_Final) | # no coma status
+      !Malaria_Positive |
+      STUDY=='AQ Gambia'),
+    
+    INCLUDE_CC_ANALYSIS_SENSITIVITY = # just core variables, don't exclude based on malaria confirmation or the AQ Gambia study
+      !(is.na(Weight_kg) |is.na(Age)) & # both age and weight missing
+      !is.na(Died) & # no outcome
+      (!is.na(Creatinine_umol_L) | !is.na(BUN)) & # no creatinine or bun
+      !is.na(Coma_Final) )
 
 table(sm_data$INCLUDE_CC_ANALYSIS,useNA = 'ifany')
 
@@ -442,6 +444,40 @@ table(sm_data$Reason_exclude, sm_data$INCLUDE_CC_ANALYSIS, useNA = 'ifany')
 
 table(sm_data$Reason_exclude)
 ```
+
+
+Plasma HRP2
+```{r PfHRP2_BUN_Creatinine, fig.width=12, fig.height=8}
+library(quantreg)
+p1=sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Creatinine_umol_L)) %>%
+  ggplot(aes(x=PfHRP2_ng_ml+1, y = Creatinine_umol_L, colour = STUDY))+
+  geom_jitter(width = .05,height = .01,alpha=0.5)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  theme_minimal(base_size = 14)+geom_smooth(se = F, aes(group=NA))+
+  geom_smooth(method = "rq", method.args = list(tau = 0.9), se = FALSE, color = "black",linetype = 2)+
+  xlab('Plasma PfHRP2 (ng/ml)')+ylab('Creatinine (umol/L)')
+p2=sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(BUN)) %>%
+  ggplot(aes(x=PfHRP2_ng_ml+1, y = BUN, colour = STUDY))+
+  geom_jitter(width = .05,height = .01,alpha=0.5)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  theme_minimal(base_size = 14)+geom_smooth(se = F, aes(group=NA))+
+  geom_smooth(method = "rq", method.args = list(tau = 0.9), se = FALSE, color = "black",linetype = 2)+
+  xlab('Plasma PfHRP2 (ng/ml)')+ylab('Urea Nitrogen (mmol/L)')
+grid.arrange(p1,p2,nrow=1)
+
+writeLines(sprintf('There are %s patients with plasma hrp2 and creatinine measured',
+                   nrow( sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Creatinine_umol_L)) )))
+
+writeLines(sprintf('There are %s patients with plasma hrp2 and BUN measured',
+                   nrow( sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(BUN)) )))
+```
+
 
 
 

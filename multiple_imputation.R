@@ -41,6 +41,7 @@ p4=sm_data %>% ggplot(aes(x=Bicarbonate_mEq_L, y = Lactate, colour = STUDY))+geo
 gridExtra::grid.arrange(p1,p2,p3,p4)
 
 colnames(sm_data)
+set.seed(5237)
 imp_list = mice(sm_data, m = 5,  printFlag = T, maxit = 15,
                 method = c("","","rf","","rf","rf","norm","rf","rf","rf","norm","norm",'norm',"norm","norm"))
 xx = complete(imp_list,action = 1)

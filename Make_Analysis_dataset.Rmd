@@ -1,0 +1,106 @@
+---
+title: "Analysis dataset"
+author: "James Watson"
+date: "2025-07-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# convert SDTM into an analysis format
+source('make_adam.R')
+```
+
+```{r render_descriptive_prep, echo=F}
+rmarkdown::render('descriptive_analysis_prep.Rmd')
+```
+## Multiple imputation of core variables
+
+```{r}
+source('multiple_imputation.R')
+```
+
+
+## Make analysis data
+
+```{r}
+rm(list=ls())
+sm_data = readr::read_csv(file = 'Data/Analysis_data.csv')
+load('RData/imputed_dataset.RData')
+imp1 = complete(imp_list,action = 1)
+sm_data$Weight_imputed = imp1$Weight_kg
+sm_data$Age_imputed = imp1$Age
+sm_data$Height_imputed = imp1$Height_cm
+sm_data$MUAC_imputed = imp1$`Mid-Upper Arm Circumference_cm`
+
+sm_data$log10_BUN_imputed = imp1$log10_BUN
+sm_data$log10_Creatinine_imputed = imp1$log10_Creatinine
+sm_data$Lactate_imputed = imp1$Lactate
+sm_data$Bicarbonate_imputed = imp1$Bicarbonate_mEq_L
+
+# select datasets with analysis pop from imputed data
+imp_data = list()
+for(i in 1:imp_list$m){
+  xx = complete(imp_list, action = i)
+  xx = xx[sm_data$INCLUDE_CC_ANALYSIS, ]
+  imp_data[[i]] = xx
+}
+rm(imp_list)
+```
+
+compute weight for age z-scores
+
+```{r weight_for_age_zscores}
+sm_data = sm_data  %>%
+  mutate(sex = ifelse(SEX=='M',1,2),
+         age_days = ifelse(Age_imputed<10, Age_imputed*365, NA))
+sm_data =
+  addWGSR(data = sm_data, sex = 'sex', 
+          firstPart = 'Weight_imputed', 
+          secondPart = 'age_days',index = 'wfa')
+
+sm_data$wfaz = ifelse(sm_data$wfaz>5 | sm_data$wfaz< -6, NA, sm_data$wfaz)
+sm_data %>% filter(!is.na(wfaz)) %>% 
+  ggplot(aes(x= Age, y = wfaz, color=SEX))+geom_point()+geom_hline(yintercept = 0) +
+  theme_minimal() + xlab('Age (years)')+ylab('Weight for age z-score')+
+  geom_smooth(aes(group=NA))+
+  facet_wrap(~STUDY)
+```
+
+
+
+Final analysis datasets
+
+```{r}
+sm_data_analysis = sm_data %>% 
+  filter(INCLUDE_CC_ANALYSIS) %>%
+  mutate(Coma = ifelse(Coma_Final==1,'Yes','No'),
+         Weight_category = cut(Weight_imputed, breaks = c(0,30,100), labels = c(">30","≤30"),include.lowest=T),
+         Age_category = cut(Age_imputed, breaks = c(0,2,5,15,100), labels = c("≤2","(2,5]","(5,15]",">15")))
+
+sm_data_analysis = sm_data_analysis %>%
+  mutate(
+    Coma = as.factor(Coma),
+    COUNTRY=as.factor(COUNTRY),
+    SITE_STUDY=paste(SITEID, STUDY,sep = '_'),
+    SITE_STUDY = as.factor(SITE_STUDY),
+    BUN_ANALYSIS = !is.na(BUN),
+    CREAT_ANALYSIS = !is.na(Creatinine_umol_L),
+    BUN_CREAT_ANALYSIS = BUN_ANALYSIS & CREAT_ANALYSIS)
+
+sm_data_analysis = sm_data_analysis %>%
+  mutate(Age = ifelse(is.na(Age), Age_imputed, Age),
+         Weight_kg = ifelse(is.na(Weight_kg), Weight_imputed, Weight_kg),
+         Height_cm = ifelse(is.na(Height_cm), Height_imputed, Height_cm))
+```
+
+
+
+```{r}
+save(sm_data_analysis, sm_data, file = 'RData/Analysis_dataset.RData')
+```
+

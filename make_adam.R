@@ -359,11 +359,11 @@ mb_SM_para = mb_SM_para %>%
     !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml>100 ~ T,
     !is.na(para_ul) & para_ul>0 ~ T,
     !is.na(Malaria_RDT) & Malaria_RDT ~ T,
-    
+
     !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml==0 ~ F,
     !is.na(para_ul) & para_ul==0 ~ F,
     !is.na(Malaria_RDT) & !Malaria_RDT ~ F,
-    
+
     T ~ NA
   ))
 # Malaria_Positive = ifelse(STUDYID=='UUJKO', T, Malaria_Positive))
