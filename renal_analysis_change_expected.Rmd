@@ -15,7 +15,7 @@ knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
 library(tidygam)
 library(mgcv)
 library(brms)
-library(conflicted)
+# library(conflicted)
 library(tidyverse)
 library(readr)
 library(rtables)
@@ -28,22 +28,20 @@ library(broom)
 library(zscorer)
 library(mice)
 library(rstanarm)
-# library(tidybayes)
-#library(worlddatr)
 
-conflicts_prefer(dplyr::filter)
-conflicts_prefer(brms::ar)
-conflicts_prefer(dplyr::collapse)
-conflicts_prefer(dplyr::combine)
-conflicts_prefer(tidyr::extract)
-conflicts_prefer(dplyr::lag)
-conflicts_prefer(brms::s)
-conflicts_prefer(purrr::set_names)
-conflicts_prefer(brms::t2)
-conflicts_prefer(dplyr::group_rows)
-conflicted::conflicts_prefer(brms::ddirichlet)
-conflicted::conflicts_prefer(brms::rdirichlet)
-conflicted::conflicts_prefer(mgcv::scat)
+# conflicts_prefer(dplyr::filter)
+# conflicts_prefer(brms::ar)
+# conflicts_prefer(dplyr::collapse)
+# conflicts_prefer(dplyr::combine)
+# conflicts_prefer(tidyr::extract)
+# conflicts_prefer(dplyr::lag)
+# conflicts_prefer(brms::s)
+# conflicts_prefer(purrr::set_names)
+# conflicts_prefer(brms::t2)
+# conflicts_prefer(dplyr::group_rows)
+# conflicted::conflicts_prefer(brms::ddirichlet)
+# conflicted::conflicts_prefer(brms::rdirichlet)
+# conflicted::conflicts_prefer(mgcv::scat)
 
 binomial_smooth <- function(...) {
   geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
@@ -73,6 +71,26 @@ mortality_threshold = 0.05
 Analysis dataset
 ```{r}
 sm_data = readr::read_csv(file = 'Data/Analysis_data.csv')
+load('RData/imputed_dataset.RData')
+imp1 = complete(imp_list,action = 1)
+sm_data$Weight_imputed = imp1$Weight_kg
+sm_data$Age_imputed = imp1$Age
+sm_data$Height_imputed = imp1$Height_cm
+sm_data$MUAC_imputed = imp1$`Mid-Upper Arm Circumference_cm`
+
+sm_data$log10_BUN_imputed = imp1$log10_BUN
+sm_data$log10_Creatinine_imputed = imp1$log10_Creatinine
+sm_data$Lactate_imputed = imp1$Lactate
+sm_data$Bicarbonate_imputed = imp1$Bicarbonate_mEq_L
+
+# select datasets with analysis pop from imputed data
+imp_data = list()
+for(i in 1:imp_list$m){
+  xx = complete(imp_list, action = i)
+  xx = xx[sm_data$INCLUDE_CC_ANALYSIS, ]
+  imp_data[[i]] = xx
+}
+rm(imp_list)
 ```
 
 
@@ -81,15 +99,16 @@ sm_data = readr::read_csv(file = 'Data/Analysis_data.csv')
 ```{r}
 sm_data = sm_data  %>%
   mutate(sex = ifelse(SEX=='M',1,2),
-         age_days = ifelse(Age<10, Age*365, NA))
+         age_days = ifelse(Age_imputed<10, Age_imputed*365, NA))
 sm_data =
   addWGSR(data = sm_data, sex = 'sex', 
-          firstPart = 'Weight_kg', 
+          firstPart = 'Weight_imputed', 
           secondPart = 'age_days',index = 'wfa')
 sm_data$wfaz = ifelse(sm_data$wfaz>5 | sm_data$wfaz< -6, NA, sm_data$wfaz)
-sm_data %>% filter(!is.na(wfaz), STUDY != 'Chittagong') %>% 
+sm_data %>% filter(!is.na(wfaz)) %>% 
   ggplot(aes(x= Age, y = wfaz, color=SEX))+geom_point()+geom_hline(yintercept = 0) +
   theme_minimal() + xlab('Age (years)')+ylab('Weight for age z-score')+
+  geom_smooth(aes(group=NA))+
   facet_wrap(~STUDY)
 ```
 
@@ -100,8 +119,8 @@ make analysis dataset
 sm_data_analysis = sm_data %>% 
   filter(INCLUDE_CC_ANALYSIS) %>%
   mutate(Coma = ifelse(Coma_Final==1,'Yes','No'),
-         Weight_category = factor(Weight_category, levels = c(">30","≤30")),
-         Age_category = factor(Age_category, levels = c(">15","(5,15]","(2,5]","≤2")))
+         Weight_category = cut(Weight_imputed, breaks = c(0,30,100), labels = c(">30","≤30"),include.lowest=T),
+         Age_category = cut(Age_imputed, breaks = c(0,2,5,15,100), labels = c("≤2","(2,5]","(5,15]",">15")))
 
 sm_data_analysis = sm_data_analysis %>%
   mutate(
@@ -113,14 +132,10 @@ sm_data_analysis = sm_data_analysis %>%
     CREAT_ANALYSIS = !is.na(Creatinine_umol_L),
     BUN_CREAT_ANALYSIS = BUN_ANALYSIS & CREAT_ANALYSIS)
 
-load('RData/imputed_dataset.RData')
-imp_data = list()
-for(i in 1:imp_list$m){
-  xx = complete(imp_list, action = i)
-  xx = xx[sm_data$INCLUDE_CC_ANALYSIS, ]
-  imp_data[[i]] = xx
-}
-rm(imp_list)
+sm_data_analysis = sm_data_analysis %>%
+  mutate(Age = ifelse(is.na(Age), Age_imputed, Age),
+         Weight_kg = ifelse(is.na(Weight_kg), Weight_imputed, Weight_kg),
+         Height_cm = ifelse(is.na(Height_cm), Height_imputed, Height_cm))
 ```
 
 
@@ -183,13 +198,13 @@ sm_data %>% filter(!is.na(`Baseline_Urea Nitrogen`)) %>%
 xx = sm_data %>% filter(!is.na(Baseline_Creatinine) | !is.na(`Baseline_Urea Nitrogen`))
 xx$MUAC = xx$`Mid-Upper Arm Circumference_cm`
 xx$Baseline_BUN = xx$`Baseline_Urea Nitrogen`
-mod_creat_baseline=stan_lm(Baseline_Creatinine ~ Age+Height_cm+`Mid-Upper Arm Circumference_cm`,
-            data = xx, prior = R2(0.5))
-# plot(mod_creat_baseline,pars = c('Age','Height_cm','SEXM',`Mid-Upper Arm Circumference_cm`))
+mod_creat_baseline=stan_lm(Baseline_Creatinine ~ Age+Height_cm+Weight_kg,
+                           data = xx, prior = R2(0.5))
+plot(mod_creat_baseline,pars = c('Age','Height_cm','Weight_kg'))
 summary(mod_creat_baseline)
 
 mod_bun_baseline=stan_lm(Baseline_BUN ~ scale(Age) + scale(Weight_kg)+scale(Height_cm)+SEX+scale(MUAC),
-            data = xx, prior = R2(0.5))
+                         data = xx, prior = R2(0.5))
 plot(mod_bun_baseline,pars = c('scale(Age)','scale(Weight_kg)','scale(Height_cm)','SEXM','scale(MUAC)'))
 summary(mod_bun_baseline)
 ```
@@ -203,28 +218,35 @@ sm_data_analysis = sm_data_analysis %>%
   mutate(
     Q = 0.0270*Age + 0.2329,
     bSrc_adults = 88.4*(0.6+0.01*(Age)+0.002*(Weight_kg) - 0.02*as.numeric(SEX=='F')),
+    bSrc_adults = ifelse(Age<15, NA, bSrc_adults),
     bSrc_children = (107.3/120)*Q*88.4,
+    bSrc_children = ifelse(Age>15, NA, bSrc_children),
     bSrc = ifelse(Age<15, bSrc_children, bSrc_adults),
     Creatinine_fold_change = Creatinine_umol_L/bSrc)
-plot(sm_data_analysis$Age, sm_data_analysis$bSrc_adults,
+plot(sm_data_analysis$Age, sm_data_analysis$bSrc,
      ylim=c(0,150),xlab='Age (years)', 
-     ylab = 'Estimated baseline Sr (umol/L)',
+     ylab = 'Estimated baseline Creatinine (umol/L)',
      panel.first=grid())
-lines(sm_data_analysis$Age, sm_data_analysis$bSrc_children,col='red',lwd=2)
 ```
 
 
 TRACT predicted baseline creatinine for children
+
 ```{r}
-preds_baseline_creat = list()
-for(i in 1:length(imp_data)){
-  preds_baseline_creat[[i]] = colMeans(posterior_predict(object = mod_creat_baseline, newdata = imp_data[[i]]))
-}
-plot(preds_baseline_creat[[1]], preds_baseline_creat[[2]])
-preds_baseline_creat = colMeans(do.call(base::rbind, preds_baseline_creat))
-sm_data_analysis$bSrc_children_tract = preds_baseline_creat
-sm_data_analysis %>% filter(Age<15) %>%
-  ggplot(aes(x=bSrc_children, y = bSrc_children_tract))+geom_point()
+sm_data_analysis$bSrc_mod = 
+  colMeans(posterior_predict(object = mod_creat_baseline, 
+                             newdata = sm_data_analysis %>% select(Age, Weight_kg, Height_cm)))
+
+sm_data_analysis %>% #filter(Age<15) %>%
+  ggplot(aes(x=bSrc, y = bSrc_mod))+geom_point()
+
+sm_data_analysis %>% #filter(Age<15) %>%
+  ggplot(aes(x=Age, y = bSrc_mod))+geom_point()
+sm_data_analysis %>% #filter(Age<15) %>%
+  ggplot(aes(x=Weight_kg, y = bSrc_mod))+geom_point()
+
+sm_data_analysis$Creatinine_fold_change2 = sm_data_analysis$Creatinine_umol_L/sm_data_analysis$bSrc_mod
+
 ```
 
 
@@ -234,8 +256,10 @@ is there heterogeneity by age/weight?
 sm_data_creat = sm_data_analysis %>% filter(!is.na(Creatinine_umol_L))
 
 f_brm_mod_creat = as.formula(bf(Died_28D ~ s(log10(Creatinine_fold_change),by=Age_category)+Coma+(1|STUDY/SITE_STUDY)))
+f_brm_mod_creat2 = as.formula(bf(Died_28D ~ s(log10(Creatinine_fold_change2),by=Age_category)+Coma+(1|STUDY/SITE_STUDY)))
 
-f_brm_mod_creat2 = as.formula(bf(Died_28D ~ s(log10(Creatinine_fold_change),by=STUDY)+Coma+(1|STUDY/SITE_STUDY)))
+
+# f_brm_mod_creat2 = as.formula(bf(Died_28D ~ s(log10(Creatinine_fold_change),by=STUDY)+Coma+(1|STUDY/SITE_STUDY)))
 
 fpath = 'RData/expected_change_renal_models.RData'
 RUN_STAN_MODELS=F
@@ -246,12 +270,12 @@ if(!file.exists(f_path) | RUN_STAN_MODELS){
         family = bernoulli(), cores = 4, seed = 17,
         iter = 2000, warmup = 1000, thin = 1, refresh = 250)
   
-  mod_creat_study_het = 
+  mod_creat_age_het2 = 
     brm(formula = f_brm_mod_creat2,
         data = sm_data_creat ,
         family = bernoulli(), cores = 4, seed = 17,
         iter = 2000, warmup = 1000, thin = 1, refresh = 250)
-  save(mod_creat_age_het, mod_creat_study_het,file = fpath)
+  save(mod_creat_age_het, mod_creat_age_het2, file = fpath)
 } else {
   load(f_path)
 }
@@ -269,7 +293,7 @@ test_data = expand_grid(Creatinine_fold_change = 10^seq(0,1,length.out=k_vals),
                         Coma=unique(sm_data_creat$Coma),
                         STUDY = unique(sm_data_creat$STUDY), 
                         SITE_STUDY = -1) %>% arrange(Creatinine_fold_change)
-
+test_data$Creatinine_fold_change2 = test_data$Creatinine_fold_change
 # remove non plausible combinations
 test_data = test_data %>%
   filter(!(Age_category==">15" & Weight_category=='(0,25]'),
@@ -283,10 +307,10 @@ preds = posterior_epred(mod_creat_age_het, newdata = test_data, re_formula = NA)
 test_data$pred_mod_creat_age_het = colMeans(preds)
 test_data$creat_age_het_threshold = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
 
-# Study het model
-preds = posterior_epred(mod_creat_study_het, newdata = test_data, re_formula = NA)
-test_data$pred_mod_creat_study_het = colMeans(preds)
-test_data$creat_study_het_threshold = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
+# Age het model using TRACT predictions
+preds = posterior_epred(mod_creat_age_het2, newdata = test_data, re_formula = NA)
+test_data$pred_mod_creat_age_het2 = colMeans(preds)
+test_data$creat_age_het_threshold2 = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
 ```
 
 
@@ -333,24 +357,24 @@ study het
 
 ```{r}
 p1=test_data %>%
-  ggplot(aes(x = Creatinine_fold_change, y = pred_mod_creat_study_het, 
-             colour =STUDY,linetype = Coma,
-             group = interaction(STUDY,Coma)))+
+  ggplot(aes(x = Creatinine_fold_change, y = pred_mod_creat_age_het2, 
+             colour =Age_category,linetype = Coma,
+             group = interaction(Age_category,Coma)))+
   geom_line()+ ylab('Predicted mortality')+
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+xlab('Creatinine: fold change from expected baseline')+
-  geom_hline(yintercept = mortality_threshold)+
-  theme(legend.position = 'none')
+  geom_hline(yintercept = mortality_threshold)
+  # theme(legend.position = 'none')
 p1_threshold=test_data %>%
-  ggplot(aes(x = Creatinine_fold_change, y = creat_study_het_threshold, 
-             colour = STUDY,linetype = Coma,
-             group = interaction(STUDY,Coma)))+
+  ggplot(aes(x = Creatinine_fold_change, y = creat_age_het_threshold2, 
+             colour = Age_category,linetype = Coma,
+             group = interaction(Age_category,Coma)))+
   geom_line()+ylab('Probability mortality > 5%')+
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+
   xlab('Creatinine: fold change from expected baseline')+
-  geom_hline(yintercept = mortality_threshold)+
-  theme(legend.position = 'none')
+  geom_hline(yintercept = mortality_threshold)
+  # theme(legend.position = 'none')
 grid.arrange(p1, p1_threshold)
 ```
 

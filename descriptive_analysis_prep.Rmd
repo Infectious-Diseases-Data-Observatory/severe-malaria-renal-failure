@@ -113,14 +113,24 @@ table(as.character(tract_creat_high$SITEID))
 ind_rm = which(apply(tract_creat_high,2,FUN = function(x) mean(is.na(x))==1))
 tract_creat_high = tract_creat_high[, -ind_rm]
 
-tract_creat_high %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, colour = `Died within 28 days`))+geom_point()+ scale_y_log10()+scale_x_log10()+theme_minimal()
+tract_creat_high %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, colour = `Died within 28 days`))+geom_point()+ scale_y_log10()+scale_x_log10()+theme_minimal()+
+  ggtitle('TRACT data: creatinines above 265')
 table(tract_creat_high$`Died within 28 days`)
 
-sm_data %>% filter(STUDY=='TRACT') %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, colour = `Died within 28 days`))+geom_point()+ scale_y_log10()+scale_x_log10()+theme_minimal()+geom_vline(xintercept = 265)
+sm_data %>% filter(STUDY=='TRACT') %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, colour = `Died within 28 days`))+geom_point()+ scale_y_log10()+scale_x_log10()+
+  theme_minimal()+geom_vline(xintercept = 265)+ggtitle('TRACT Creatinine and BUN data')
+
+sm_data %>% filter(STUDY=='TRACT') %>% 
+  ggplot(aes(x=Age, y = Creatinine_umol_L, colour = `Died within 28 days`))+
+  geom_point()+ scale_y_log10()+
+  theme_minimal()+geom_hline(yintercept = 265)+
+  ggtitle('TRACT Age and Creatinine data')
 ```
 
 
 ### Age, weight and height
+
+Remove some height and weight outliers
 
 ```{r outliers_age_weight_height}
 ind_outliers = sm_data$Age==0 |
@@ -147,10 +157,9 @@ sm_data %>% ggplot(aes(x = Age, y = Glucose_mmol_L, colour = Hypoglycaemia))+
 ```
 
 
-
-
-
 ### Lactate and bicarbonate/base excess
+
+We look at the different measure of acidosis
 
 ```{r acidosis}
 sm_data %>% filter(!is.na(Lactate), !is.na(`Base Excess_mmol_L`)) %>% 
@@ -200,7 +209,7 @@ p3=sm_data %>% filter(!is.na(`Base Excess_mmol_L`), !is.na(Bicarbonate_mEq_L)) %
 grid.arrange(p1,p2,p3)
 ```
 
-Impute missing bicarbonate and missing base excess
+Remove bicarbonate versus base excess outliers
 
 ```{r}
 table(is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$`Base Excess_mmol_L`))
@@ -211,57 +220,7 @@ table(!is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$`Base Excess_mmol_L`))
 outliers_bicarb_baseexcess = which(sm_data$Bicarbonate_mEq_L-sm_data$`Base Excess_mmol_L`<15 | sm_data$Bicarbonate_mEq_L-sm_data$`Base Excess_mmol_L`>40)
 sm_data$Bicarbonate_mEq_L[outliers_bicarb_baseexcess]=NA
 sm_data$`Base Excess_mmol_L`[outliers_bicarb_baseexcess]=NA
-# sm_data$Base_Excess_mmol_L=sm_data$`Base Excess_mmol_L`
-# mod_bicarbonate = gam(Bicarbonate_mEq_L~s(Base_Excess_mmol_L),
-#                      data = sm_data %>% filter( !is.na(Bicarbonate_mEq_L)))
-# predict(mod_bicarbonate, newdata = data.frame(Base_Excess_mmol_L= -8))
-# summary(mod_bicarbonate)
-# sm_data$Bicarbonate_mEq_L_imp = NA
-# ind = which(!is.na(sm_data$Base_Excess_mmol_L) & !is.na(sm_data$Hb)  & !is.na(sm_data$Age))
-# sm_data$Bicarbonate_mEq_L_imp[ind] = predict(mod_bicarbonate, newdata = sm_data[ind,])
-# 
-# mod_BE = gam(Base_Excess_mmol_L ~ s(Bicarbonate_mEq_L),
-#                      data = sm_data %>% filter(!is.na(Age), !is.na(Bicarbonate_mEq_L)))
-# predict(mod_BE, newdata = data.frame(Bicarbonate_mEq_L= 15))
-# summary(mod_BE)
-# sm_data$Base_Excess_mmol_L_imp = NA
-# ind = which(!is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$Hb)  & !is.na(sm_data$Age))
-# sm_data$Base_Excess_mmol_L_imp[ind] = predict(mod_BE, newdata = sm_data[ind,])
-# 
-# 
-# sm_data %>% ggplot(aes(x=Base_Excess_mmol_L_imp, y = Bicarbonate_mEq_L_imp, colour = STUDY))+
-#   geom_point()+geom_smooth(aes(group=NA))
-# 
-# sm_data %>% ggplot(aes(x=Base_Excess_mmol_L_imp, y = Base_Excess_mmol_L_imp/Bicarbonate_mEq_L_imp, colour = STUDY))+
-#   geom_point()
 ```
-
-
-imputation of missing lactates
-
-```{r impute_lactate}
-# sm_data = sm_data %>% 
-#   mutate(acidosis_measured= !is.na(Lactate) | !is.na(Bicarbonate_mEq_L) | !is.na(`Base Excess_mmol_L`))
-# table(sm_data$STUDY, sm_data$acidosis_measured)
-# ind = which(sm_data$acidosis_measured)
-# cols = c('Died','Age_category','Hb','Lactate','Base Excess_mmol_L','Bicarbonate_mEq_L',"Respiratory distress")
-# sm_data$Age_category = as.factor(sm_data$Age_category)
-# sm_data$Died = as.factor(sm_data$Died_28D)
-# sm_data$`Respiratory distress` = as.factor(sm_data$`Respiratory distress`)
-# x_in = (sm_data[ind, cols])
-# x_imp = mice(x_in, m = 5, method = 'pmm', maxit = 50, seed = 500)
-# 
-# x_imp2 = missRanger(x_in,formula = Lactate ~ Died+Age_category+Hb, num.trees = 100)
-# 
-# ind = which(is.na(sm_data$Lactate) & !is.na(sm_data$Bicarbonate_mEq_L))
-# sum(ind)
-# mod_lactate_impute = lme4::lmer(Lactate ~ Bicarbonate_mEq_L + (1|STUDY), data = sm_data)
-# summary(mod_lactate_impute)
-# preds = predict(mod_lactate_impute, newdata = sm_data[ind, ],re.form=NA)
-# sm_data$Lactate[ind] = ifelse(preds>0, preds, 0)
-# hist(sm_data$Lactate, breaks = 100)
-```
-
 
 
 
@@ -276,9 +235,13 @@ sm_data %>% filter(!is.na(Lactate), !is.na(Bicarbonate_mEq_L), !is.na(Age_catego
 
 ### Outlier detection for Creatinine and BUN
 
-```{r}
+```{r histograms_creat_bun}
 sm_data %>%
   ggplot(aes(x=Creatinine_umol_L, colour = STUDY))+
+  geom_histogram()+scale_x_log10()
+
+sm_data %>%
+  ggplot(aes(x=BUN, colour = STUDY))+
   geom_histogram()+scale_x_log10()
 ```
 
@@ -287,13 +250,14 @@ sm_data %>%
 How do the distributions of BUN and creatinine vary across studies in the children?
 
 ```{r boxplots}
-sm_data %>% filter(Weight_kg<30) %>%
-  ggplot(aes(x=STUDY, y=Creatinine_umol_L)) + geom_boxplot()+
+sm_data %>% 
+  ggplot(aes(x=STUDY, y=Creatinine_umol_L, colour = Continent)) + geom_boxplot()+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
-sm_data %>% filter(Weight_kg<30) %>%
-  ggplot(aes(x=STUDY, y=BUN)) + geom_boxplot()+
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))
+sm_data %>% 
+  ggplot(aes(x=STUDY, y=BUN, colour = Continent)) + geom_boxplot()+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 ```
 
 
@@ -330,23 +294,6 @@ grid.arrange(p1,p2,nrow=1)
 ```
 
 
-
-BUN versus Creatinine to spot outliers
-
-```{r}
-sm_data %>% ggplot(aes(x=log2(Creatinine_umol_L) - log2(BUN)))+
-  geom_histogram()+geom_vline(xintercept = c(0.5,6.5))+
-  theme_minimal()
-
-sm_data = sm_data %>%
-  mutate(BUN_Creat_ratio = log2(Creatinine_umol_L)-log2(BUN),
-         BUN_Creat_outlier = ifelse(is.na(BUN_Creat_ratio) | (BUN_Creat_ratio>0.5 & BUN_Creat_ratio<6.5), F, T))
-
-sm_data %>% ggplot(aes(x=BUN, y = Creatinine_umol_L, color = BUN_Creat_outlier))+
-  geom_point()+scale_x_log10()+scale_y_log10()+
-  theme_minimal()
-table(sm_data$BUN_Creat_outlier)
-```
 
 
 ```{r weight_age, fig.width=12, fig.height=8}
@@ -430,15 +377,6 @@ sm_data %>%
   theme_bw(base_size = 15)#+theme(legend.position="none")
 ```
 
-```{r impute_age_weight}
-table(Age=is.na(sm_data$Age),Weight=is.na(sm_data$Weight_kg))
-
-mod_age = gam(Age ~ s(Weight_kg) + s(STUDY, bs='re'), data = sm_data)
-ind1 = is.na(sm_data$Age) & !is.na(sm_data$Weight_kg)
-sum(ind1)
-sm_data$Age[ind1] = predict(mod_age,newdata = sm_data[ind1,])
-```
-
 
 
 ## Make analysis dataset
@@ -446,15 +384,20 @@ sm_data$Age[ind1] = predict(mod_age,newdata = sm_data[ind1,])
 ```{r make_analysis_data}
 #Remove AQ Gambia from analysis data-set as unreliable creatinine values
 sm_data = sm_data %>% 
-  mutate(INCLUDE_CC_ANALYSIS = 
-           !is.na(Weight_kg) &
-           !is.na(Age) &
-           !is.na(Malaria_Positive) & 
-           !is.na(Died) & 
-           (!is.na(Creatinine_umol_L) | !is.na(BUN)) &
-           !is.na(Coma_Final) &
-           Malaria_Positive &
-           STUDY!='AQ Gambia')
+  mutate(INCLUDE_CC_ANALYSIS = !(
+           (is.na(Weight_kg) & is.na(Age) & is.na(Height_cm)) | # age, weight and height all missing
+           is.na(Malaria_Positive) | # no malaria confirmation
+           is.na(Died) | # no outcome
+           (is.na(Creatinine_umol_L) & is.na(BUN)) | # no creatinine or bun
+           is.na(Coma_Final) | # no coma status
+           !Malaria_Positive |
+           STUDY=='AQ Gambia'),
+         
+         INCLUDE_CC_ANALYSIS_SENSITIVITY = # just core variables, don't exclude based on malaria confirmation or the AQ Gambia study
+           !(is.na(Weight_kg) |is.na(Age)) & # both age and weight missing
+           !is.na(Died) & # no outcome
+           (!is.na(Creatinine_umol_L) | !is.na(BUN)) & # no creatinine or bun
+           !is.na(Coma_Final) )
 
 table(sm_data$INCLUDE_CC_ANALYSIS,useNA = 'ifany')
 
@@ -487,11 +430,11 @@ reasons for exclusion
 sm_data = sm_data %>%
   mutate(Reason_exclude = case_when(
     INCLUDE_CC_ANALYSIS ~ NA,
+    !INCLUDE_CC_ANALYSIS & STUDY=='AQ Gambia' ~ 'AQ Gambia study',
     !INCLUDE_CC_ANALYSIS & is.na(Creatinine_umol_L) & is.na(BUN) ~ 'No BUN or Creatinine measurement',
     !INCLUDE_CC_ANALYSIS & (is.na(Malaria_Positive) | !Malaria_Positive) ~ 'No confirmed malaria',
     !INCLUDE_CC_ANALYSIS & is.na(Died) ~ 'No mortality outcome',
-    !INCLUDE_CC_ANALYSIS & STUDY=='AQ Gambia' ~ 'AQ Gambia study',
-    !INCLUDE_CC_ANALYSIS & is.na(Weight_kg) ~ 'No weight/age',
+    !INCLUDE_CC_ANALYSIS & is.na(Weight_kg) & is.na(Age) ~ 'No weight/age',
     !INCLUDE_CC_ANALYSIS & is.na(Coma_Final) ~ 'No coma information',
     T ~ 'weird!'
   ))

@@ -311,7 +311,7 @@ ind = which(baseline_lb_SM_wide$STUDYID=='JTGNG' &
 baseline_lb_SM_wide$`Creatinine_umol/L`[ind]=baseline_lb_SM_wide$`Creatinine_umol/L`[ind]/10
 
 
-
+#####***** MB data *******#######
 mb_SM = read_csv(f_path('MB'),na = "\\N")
 table(mb_SM$STUDYID, mb_SM$EPOCH, useNA = 'ifany')
 
@@ -359,17 +359,21 @@ mb_SM_para = mb_SM_para %>%
     !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml>100 ~ T,
     !is.na(para_ul) & para_ul>0 ~ T,
     !is.na(Malaria_RDT) & Malaria_RDT ~ T,
-
+    
     !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml==0 ~ F,
     !is.na(para_ul) & para_ul==0 ~ F,
     !is.na(Malaria_RDT) & !Malaria_RDT ~ F,
-
+    
     T ~ NA
   ))
 # Malaria_Positive = ifelse(STUDYID=='UUJKO', T, Malaria_Positive))
 table(mb_SM_para$STUDYID, mb_SM_para$Malaria_Positive,useNA = 'ifany')
 
-## Make merged dataset
+#####***** Make merged dataset *******#######
+#####*
+#####*
+#####*
+
 dat_all = merge(dm_SM, ds_SM, by = col_ids, all = T) %>%
   mutate(Time_to_death = case_when(
     !is.na(Time_to_death.x) & is.na(Time_to_death.y) ~ Time_to_death.x,
@@ -418,7 +422,9 @@ table(dat_all_final$STUDY, dat_all_final$COUNTRY)
 dat_all_final$Continent = ifelse(dat_all_final$COUNTRY %in% c('VNM','BGD','IDN','IND','MMR','THA'),'ASIA','AFRICA')
 table(dat_all_final$Continent, dat_all_final$STUDY)
 
+## Get rid of implausible values for age and weight
 dat_all_final$Age[dat_all_final$Age<0]=NA
+dat_all_final$Age[dat_all_final$Ag==0]=0.5
 dat_all_final$Weight_kg[dat_all_final$Age>100 & dat_all_final$Weight_kg<1]=NA
 
 colnames(dat_all_final) = gsub(pattern = '/',replacement = '_',fixed = T,x = colnames(dat_all_final))
@@ -453,34 +459,54 @@ ind = dat_all_final$STUDY=='KEMRI' &
   dat_all_final$Hemoglobin_g_L > 5* dat_all_final$`Hematocrit_%`
 dat_all_final$`Hematocrit_%`[ind] = dat_all_final$`Hematocrit_%`[ind]*10
 dat_all_final$`Hematocrit_%`[dat_all_final$`Hematocrit_%`>100]=NA
+dat_all_final$Hemoglobin_g_L[dat_all_final$Hemoglobin_g_L>200]=NA
 
 dat_all_final %>%
   ggplot(aes(x=`Hematocrit_%`, y=Hemoglobin_g_L, colour = STUDY))+geom_point()
 
-
-
 dat_all_final$COUNTRY=as.factor(dat_all_final$COUNTRY)
-mod_smooth = mgcv::gam(Weight_kg ~ s(Age,k=4) + s(COUNTRY,bs='re'), data = dat_all_final)
-ind_pred = is.na(dat_all_final$Weight_kg) & !is.na(dat_all_final$Age)
-dat_all_final$Weight_kg[ind_pred] =
-  predict(mod_smooth,
-          newdata = dat_all_final[ind_pred, c('Age','COUNTRY')], exclude="s(COUNTRY,bs='re')")
+# mod_smooth = mgcv::gam(Weight_kg ~ s(Age,k=4) + s(COUNTRY,bs='re'), data = dat_all_final)
+# ind_pred = is.na(dat_all_final$Weight_kg) & !is.na(dat_all_final$Age)
+# dat_all_final$Weight_kg[ind_pred] =
+#   predict(mod_smooth,
+#           newdata = dat_all_final[ind_pred, c('Age','COUNTRY')], exclude="s(COUNTRY,bs='re')")
 
-dat_all_final$Weight_category = cut(dat_all_final$Weight_kg, breaks = c(0, 30, 100))
-dat_all_final = dat_all_final %>%
-  mutate(Weight_category = recode(Weight_category,
-                                  "(0,30]" = "≤30",
-                                  "(30,100]" = ">30"))
+# dat_all_final$Weight_category = cut(dat_all_final$Weight_kg, breaks = c(0, 30, 100))
+# dat_all_final = dat_all_final %>%
+#   mutate(Weight_category = recode(Weight_category,
+#                                   "(0,30]" = "≤30",
+#                                   "(30,100]" = ">30"))
 dat_all_final$STUDY_color = brewer.pal(n = 12, name = 'Paired')[as.numeric(as.factor(dat_all_final$STUDY))]
 
 
-dat_all_final %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, colour = SITEID))+geom_point()+
-  scale_x_log10() + scale_y_log10()
+dat_all_final %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, colour = STUDY))+
+  geom_point()+
+  scale_x_log10() + scale_y_log10()+geom_vline(xintercept = 5)+
+  geom_hline(yintercept = .5)
+dat_all_final %>% ggplot(aes(x=Weight_kg, y=BUN, colour = STUDY))+
+  geom_point()+
+  scale_y_log10()
+dat_all_final %>% ggplot(aes(x=Weight_kg, y=Creatinine_umol_L, colour = STUDY))+
+  geom_point()+
+  scale_y_log10()
+dat_all_final %>% ggplot(aes(x=Age, y=BUN, colour = STUDY))+
+  geom_point()+
+  scale_y_log10()
+dat_all_final %>% ggplot(aes(x=Age, y=Creatinine_umol_L, colour = STUDY))+
+  geom_point()+
+  scale_y_log10()
+
+
+
 dat_all_final = dat_all_final %>%
-  mutate(Creatinine_umol_L = ifelse(Creatinine_umol_L<10, NA, Creatinine_umol_L),
-         BUN = ifelse(BUN<1, NA, BUN),
-         BUN = ifelse(BUN>100, NA, BUN))
-ind = which(dat_all_final$BUN < dat_all_final$Creatinine_umol_L/100)
+  mutate(Creatinine_umol_L = ifelse(Creatinine_umol_L<8, 8, Creatinine_umol_L),
+         BUN = ifelse(BUN<.5, .5, BUN),
+         BUN = ifelse(BUN>100, 100, BUN),
+         Creat_BUN_ratio = Creatinine_umol_L/BUN)
+dat_all_final %>% ggplot(aes(x=log10(Creat_BUN_ratio), colour = STUDY))+
+  geom_histogram()
+
+ind = which(dat_all_final$Creat_BUN_ratio<1 | dat_all_final$Creat_BUN_ratio>100)
 dat_all_final$Creatinine_umol_L[ind]=NA
 dat_all_final$BUN[ind]=NA
 
@@ -488,7 +514,7 @@ dat_all_final$BUN[ind]=NA
 ind = which(dat_all_final$Time_to_death > 8000 & dat_all_final$STUDY=='AQUAMAT')
 dat_all_final$Time_to_death[ind]=10*24
 
-# Remove 999 heigh values in TRACT
+# Remove 999 height values in TRACT
 ind = which(dat_all_final$Height_cm > 200 & dat_all_final$STUDY=='TRACT')
 dat_all_final$Height_cm[ind]=NA
 
@@ -514,7 +540,27 @@ dat_all_final$`Base Excess_mmol_L`[ind] = -1*dat_all_final$`Base Excess_mmol_L`[
 dat_all_final$`Base Excess_mmol_L` = ifelse(dat_all_final$`Base Excess_mmol_L`< -35, NA, dat_all_final$`Base Excess_mmol_L`)
 hist(dat_all_final$`Base Excess_mmol_L`, breaks = 200)
 
+## Missing ages in AQ Vietnam study (CCFRW)?? This seems like a data merge issue because there are more (569) patients in the data relative to the study (560)
 
+## MUAC outliers
+dat_all_final %>% filter(!is.na(`Mid-Upper Arm Circumference_cm`)) %>%
+  ggplot(aes(x=Age, y = `Mid-Upper Arm Circumference_cm`, colour = STUDY))+
+  geom_point()+theme_minimal()+
+  geom_abline(intercept = 8, slope = .5)+
+  geom_abline(intercept = 19, slope = .5)+geom_vline(xintercept = 15)+
+  geom_smooth(method = lm)
+
+
+dat_all_final %>% filter(!is.na(`Mid-Upper Arm Circumference_cm`), Age<5) %>%
+  ggplot(aes(x=`Mid-Upper Arm Circumference_cm`, color = STUDY))+
+  geom_histogram()+theme_minimal()
+
+
+ind = which((dat_all_final$Age>15  |
+               (dat_all_final$`Mid-Upper Arm Circumference_cm` < (dat_all_final$Age*0.5 + 8)) |
+               (dat_all_final$`Mid-Upper Arm Circumference_cm` > (dat_all_final$Age*0.5 + 19))) &
+              !is.na(dat_all_final$`Mid-Upper Arm Circumference_cm`))
+dat_all_final$`Mid-Upper Arm Circumference_cm`[ind]=NA
 ## Manual correction of base excess values in FEAST
 ind = which(dat_all_final$STUDY=='FEAST' &
               dat_all_final$`Base Excess_mmol_L` > 5 & dat_all_final$Bicarbonate_mEq_L<20)
