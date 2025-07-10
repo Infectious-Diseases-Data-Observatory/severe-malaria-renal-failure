@@ -53,3 +53,4 @@ po/*~
 rsconnect/
 *.RData
 *.pdf
+.DS_Store

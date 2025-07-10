@@ -1,0 +1,149 @@
+---
+title: "Renal Analysis Severe Malaria"
+author: "James Watson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
+                      echo = F, include = TRUE, 
+                      fig.width = 8, fig.height = 8,
+                      fig.pos = 'H',dev = 'png', dpi = 300)
+
+
+library(brms)
+library(tidyverse)
+library(grid)
+library(gridExtra)
+```
+
+
+
+Plotting params
+
+```{r}
+source('setup_parameters.R')
+```
+
+
+## Load data
+
+Analysis dataset
+```{r}
+load('RData/Analysis_dataset.RData')
+```
+
+
+Analysis of BUN data stratified by age group and coma status
+
+```{r}
+sm_data_bun = sm_data_analysis %>% filter(!is.na(BUN))
+f_brm_mod_bun = as.formula(bf(Died_28D ~ s(log10(BUN),by=Age_category)+Coma+(1|STUDY/SITE_STUDY)))
+
+f_path = 'RData/bun_models.RData'
+RUN_STAN_MODELS=F
+if(!file.exists(f_path) | RUN_STAN_MODELS){
+  mod_bun_age_het = 
+    brm(formula = f_brm_mod_bun,
+        data = sm_data_bun ,
+        family = bernoulli(), cores = 4, seed = 17,
+        iter = 2000, warmup = 1000, thin = 1, refresh = 250)
+  
+  mod_bun_age_het2 = 
+    brm(formula = f_brm_mod_bun,
+        data = sm_data_bun %>% filter(STUDY!='TRACT'),
+        family = bernoulli(), cores = 4, seed = 17,
+        iter = 2000, warmup = 1000, thin = 1, refresh = 250)
+  
+  mod_bun_age_het3 = 
+    brm(formula = f_brm_mod_bun,
+        data = sm_data_bun %>% filter(PfHRP2_ng_ml > 800),
+        family = bernoulli(), cores = 4, seed = 17,
+        iter = 2000, warmup = 1000, thin = 1, refresh = 250)
+
+  save(mod_bun_age_het,mod_bun_age_het2,mod_bun_age_het3, file = f_path)
+} else {
+  load(f_path)
+}
+```
+
+
+
+```{r}
+k_vals=40
+test_data = expand_grid(BUN = 10^seq(0.2,1.6,length.out=k_vals),
+                        Age_category=levels(sm_data_bun$Age_category),
+                        Weight_category=levels(sm_data_bun$Weight_category),
+                        Coma=unique(sm_data_bun$Coma),
+                        STUDY=unique(sm_data_bun$STUDY), 
+                        SITE_STUDY = -1) %>% 
+  arrange(BUN)
+
+# remove non plausible combinations
+test_data = test_data %>%
+  filter(!(Age_category==">15" & Weight_category=='(0,25]'),
+         !(Age_category %in% c("(2,5]","≤2") & Weight_category=='(25,100]')) %>%
+  mutate(Age_category=factor(Age_category, levels = c("≤2","(2,5]","(5,15]",">15")))
+
+# get model predictions
+# Full model
+preds = posterior_epred(mod_bun_age_het, newdata = test_data, re_formula = NA)
+test_data$pred_mod_bun_age_het = colMeans(preds)
+test_data$bun_age_het_threshold = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
+
+# High HRP2 model
+test_data3 = test_data %>% filter(Age_category !='>15') %>% mutate(Age_category = droplevels(Age_category))
+preds = posterior_epred(mod_bun_age_het3, newdata = test_data3, re_formula = NA)
+test_data3$pred_mod_bun_age_het3 = colMeans(preds)
+test_data3$bun_age_het_threshold3 = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
+```
+
+
+
+```{r age_vs_BUN, fig.width=10, fig.height=7}
+p1=test_data %>%
+  ggplot(aes(x = BUN, y = pred_mod_bun_age_het, 
+             colour = Age_category,linetype = Coma,
+             group = interaction(Age_category,Coma)))+
+  geom_line()+ ylab('Predicted mortality')+
+  scale_x_log10() +
+  annotation_logticks(sides='b')+theme_minimal(base_size = 13)+
+  xlab('Urea Nitrogen (mmol/L)')+
+  geom_hline(yintercept = mortality_threshold)
+p1_threshold=test_data %>%
+  ggplot(aes(x = BUN, y = bun_age_het_threshold, 
+             colour = Age_category,linetype = Coma,
+             group = interaction(Age_category,Coma)))+
+  geom_line()+ylab('Probability mortality > 5%')+
+  scale_x_log10() + theme_minimal(base_size = 13)+
+  annotation_logticks(sides='b')+
+  xlab('Urea Nitrogen (mmol/L)')+
+  geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
+grid.arrange(p1, p1_threshold)
+```
+
+
+
+```{r age_vs_BUN_high_hrp2, fig.width=10, fig.height=7}
+p1=test_data3 %>%
+  ggplot(aes(x = BUN, y = pred_mod_bun_age_het3, 
+             colour =Age_category,linetype = Coma,
+             group = interaction(Age_category,Coma)))+
+  geom_line()+ ylab('Predicted mortality')+
+  scale_x_log10() +
+  annotation_logticks(sides='b')+theme_minimal(base_size = 13)+
+  xlab('Urea Nitrogen (mmol/L)')+
+  geom_hline(yintercept = mortality_threshold)
+p1_threshold=test_data3 %>%
+  ggplot(aes(x = BUN, y = bun_age_het_threshold3, 
+             colour = Age_category,linetype = Coma,
+             group = interaction(Age_category,Coma)))+
+  geom_line()+ylab('Probability mortality > 5%')+
+  scale_x_log10() + theme_minimal(base_size = 13)+
+  annotation_logticks(sides='b')+
+  xlab('Urea Nitrogen (mmol/L)')+
+  geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
+grid.arrange(p1, p1_threshold)
+```
+

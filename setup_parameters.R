@@ -8,3 +8,9 @@ bun_limits = c(2,50)
 crea_limits = c(20,500)
 
 mortality_threshold = 0.05
+f_threshold = function(x, mortality_threshold) mean(x>mortality_threshold)
+
+
+binomial_smooth <- function(...) {
+  geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
+}

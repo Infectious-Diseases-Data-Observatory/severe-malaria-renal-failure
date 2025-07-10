@@ -12,15 +12,11 @@ knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
                       fig.pos = 'H',dev = 'png', dpi = 300)
 
 library(brms)
-# library(conflicted)
+library(tidybayes)
 library(tidyverse)
 library(grid)
 library(gridExtra)
 library(rstanarm)
-# 
-# binomial_smooth <- function(...) {
-#   geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
-# }
 ```
 
 
@@ -43,6 +39,8 @@ load('RData/Analysis_dataset.RData')
 # Calculate expected Cr based on age, weight
 
 ## Baseline creatinines
+
+We look at the data from the TRACT study, Malawi site where we have follow-up creatinines and BUN in patients who survived and were not lost to follow-up. We compare these values to the expected values from the Pottel equation.
 
 ```{r}
 p1=sm_data %>% filter(!is.na(Baseline_Creatinine)) %>%
@@ -114,9 +112,11 @@ Pottel age-based equation, where eGFR=107.3/(SCr/Q)
 assuming a normal GFR of 120 mL/min per 1.73 m2 (height-independent). 
 Q=0.0270*age+0.2329.
 
+We estimate the Pottel baseline creatinine (age only for children)
+We estimate the adult baseline creatine using Cockcroft-Gault equation
+
+
 ```{r}
-# Estimate the Pottel baseline creatinine (age only for children)
-# Estimate the adult baseline creatine using Cockcroft-Gault equation
 sm_data_analysis = sm_data_analysis %>%
   mutate(
     Q = 0.0270*Age + 0.2329,
@@ -166,10 +166,28 @@ grid.arrange(p1,p2,p3,p4,nrow=2)
 
 is there heterogeneity by age/weight?
 
-```{r mod_age_het}
+```{r creatinine_fold_change}
 sm_data_creat = sm_data_analysis %>% filter(!is.na(Creatinine_umol_L))
 sm_data_creat %>% ggplot(aes(x=Creatinine_fold_change, y = Creatinine_fold_change2, colour = Age_category))+
   geom_point()+scale_x_log10()+scale_y_log10()+theme_minimal()
+
+sm_data_analysis %>% ggplot(aes(x=Creatinine_fold_change))+geom_histogram()+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) 
+
+p1=sm_data_creat %>% ggplot(aes(x=Weight_kg, y = Creatinine_fold_change, colour = Age_category))+
+  geom_point()+scale_y_log10()+theme_minimal(base_size = 14)+
+  geom_smooth(aes(group=NA))+ylab('Creatinine fold change (Potel or CG)')
+p2=sm_data_creat %>% ggplot(aes(x=Age, y = Creatinine_fold_change, colour = STUDY))+
+  geom_point()+scale_y_log10()+theme_minimal(base_size = 14)+
+  geom_smooth(aes(group=NA))+ylab('Creatinine fold change (Potel or CG)')
+
+p3=sm_data_creat %>% ggplot(aes(x=Weight_kg, y = Creatinine_fold_change2, colour = Age_category))+
+  geom_point()+scale_y_log10()+theme_minimal(base_size = 14)+
+  geom_smooth(aes(group=NA))+ylab('Creatinine fold change (TRACT/CG)')
+p4=sm_data_creat %>% ggplot(aes(x=Age, y = Creatinine_fold_change2, colour = STUDY))+
+  geom_point()+scale_y_log10()+theme_minimal(base_size = 14)+
+  geom_smooth(aes(group=NA))+ylab('Creatinine fold change (TRACT/CG)')
+grid.arrange(p1,p2,p3,p4)
 
 f_brm_mod_creat = as.formula(bf(Died_28D ~ s(log10(Creatinine_fold_change),by=Age_category)+Coma+(1|STUDY/SITE_STUDY)))
 
@@ -196,16 +214,15 @@ if(!file.exists(f_path) | RUN_STAN_MODELS){
 ```
 
 
-Test data
+Make some test data
 
 ```{r}
 k_vals=40
 test_data = expand_grid(Creatinine_fold_change = 10^seq(0,1,length.out=k_vals),
-                        # BUN = 10^seq(0,2,length.out=k_vals),
-                        Age_category=c(">15","(5,15]","(2,5]","≤2"),
-                        Weight_category=unique(sm_data_creat$Weight_category),
+                        Age_category=levels(sm_data_creat$Age_category),
+                        Weight_category=levels(sm_data_creat$Weight_category),
                         Coma=unique(sm_data_creat$Coma),
-                        STUDY = unique(sm_data_creat$STUDY), 
+                        STUDY=unique(sm_data_creat$STUDY), 
                         SITE_STUDY = -1) %>% arrange(Creatinine_fold_change)
 test_data$Creatinine_fold_change2 = test_data$Creatinine_fold_change
 # remove non plausible combinations
@@ -215,7 +232,6 @@ test_data = test_data %>%
   mutate(Age_category=factor(Age_category, levels = c("≤2","(2,5]","(5,15]",">15")))
 
 # get model predictions
-f_threshold = function(x, mortality_threshold) mean(x>mortality_threshold) 
 # Full model
 preds = posterior_epred(mod_creat_age_het, newdata = test_data, re_formula = NA)
 test_data$pred_mod_creat_age_het = colMeans(preds)
@@ -228,6 +244,23 @@ test_data$creat_age_het_threshold2 = apply(preds, 2, f_threshold,mortality_thres
 ```
 
 
+```{r age_vs_Cr_foldchange, fig.width=10, fig.height=7}
+sm_data_creat %>% 
+  ggplot(aes(x=Age, y = Creatinine_fold_change))+
+  scale_y_log10() + geom_point()+
+  scale_x_sqrt()+geom_smooth()+theme_minimal(base_size = 12)+
+  ylab('Creatinine fold change (Pottel/CG)')+
+  facet_wrap(~STUDY,nrow=2)
+
+sm_data_creat %>% 
+  ggplot(aes(x=Age, y = Creatinine_fold_change2))+
+  scale_y_log10() + geom_point()+
+  ylab('Creatinine fold change (TRACT/CG)')+
+  scale_x_sqrt()+geom_smooth()+theme_minimal(base_size = 12)+facet_wrap(~STUDY,nrow=2)
+```
+
+
+Model using Pottel equation (children) and CG (adults)
 
 ```{r}
 p1=test_data %>%
@@ -235,39 +268,33 @@ p1=test_data %>%
              colour =Age_category,linetype = Coma,
              group = interaction(Age_category,Coma)))+
   geom_line()+ ylab('Predicted mortality')+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 13)+xlab('Creatinine: fold change from expected baseline')+
+  scale_x_log10() +
+  annotation_logticks(sides='b')+theme_minimal(base_size = 13)+
+  xlab('Creatinine fold change (Pottel/CG)')+
   geom_hline(yintercept = mortality_threshold)
-# theme(legend.position = 'none')
 p1_threshold=test_data %>%
   ggplot(aes(x = Creatinine_fold_change, y = creat_age_het_threshold, 
              colour = Age_category,linetype = Coma,
              group = interaction(Age_category,Coma)))+
   geom_line()+ylab('Probability mortality > 5%')+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
-  annotation_logticks(sides='b')+theme_bw(base_size = 13)+
+  scale_x_log10() + theme_minimal(base_size = 13)+
+  annotation_logticks(sides='b')+
   xlab('Creatinine: fold change from expected baseline')+
-  geom_hline(yintercept = mortality_threshold)
-# theme(legend.position = 'none')
+  geom_hline(yintercept = .95)+geom_vline(xintercept = 3)
 grid.arrange(p1, p1_threshold)
 
-sm_data_analysis %>% ggplot(aes(x=Creatinine_fold_change))+geom_histogram()+
-  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) 
-sm_data_analysis %>% 
-  ggplot(aes(x=Age, y = Creatinine_fold_change, colour = `Blood in urine`))+
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) + geom_point()+
-  scale_x_sqrt()+facet_wrap(~STUDY)
 
 sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
-  ggplot(aes(x=Age, y = Creatinine_umol_L, colour = Creatinine_fold_change>2.7))+
+  ggplot(aes(x=Age, y = Creatinine_umol_L, colour = Creatinine_fold_change>3))+
   geom_point()+scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+
-  geom_hline(yintercept = 265)+scale_x_sqrt()+theme_minimal()
-
+  geom_hline(yintercept = 265,aes(linetype = 'dashed'))+
+  scale_x_sqrt()+theme_minimal(base_size = 14)+
+  geom_vline(xintercept = c(2, 5,15))
 ```
 
 
 
-study het
+Model using TRACT follow-up model (children) and CG (adults)
 
 ```{r}
 p1=test_data %>%
@@ -278,7 +305,7 @@ p1=test_data %>%
   scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+xlab('Creatinine: fold change from expected baseline')+
   geom_hline(yintercept = mortality_threshold)
-  # theme(legend.position = 'none')
+# theme(legend.position = 'none')
 p1_threshold=test_data %>%
   ggplot(aes(x = Creatinine_fold_change, y = creat_age_het_threshold2, 
              colour = Age_category,linetype = Coma,
@@ -288,7 +315,101 @@ p1_threshold=test_data %>%
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+
   xlab('Creatinine: fold change from expected baseline')+
   geom_hline(yintercept = mortality_threshold)
-  # theme(legend.position = 'none')
+# theme(legend.position = 'none')
 grid.arrange(p1, p1_threshold)
+```
+
+
+
+### Compare creatinine fold change with BUN
+
+Compare BUN versus Creatinine when both measured
+
+```{r}
+sm_both = sm_data_analysis %>% filter(!is.na(Creatinine_umol_L), !is.na(BUN))
+
+# children under 5
+mod_both_U5 = lme4::glmer(Died_28D~scale(log10(BUN))+scale(log10(Creatinine_fold_change))+Coma+(1|SITE_STUDY),
+                          family='binomial', data = sm_both %>% filter(Age<=5))
+summary(mod_both_U5)
+
+# children 5-15
+mod_both_5_15 = lme4::glmer(Died_28D~scale(log10(BUN))+scale(log10(Creatinine_fold_change))+Coma+(1|SITE_STUDY),
+                            family='binomial', data = sm_both %>% filter(Age>5, Age<15))
+summary(mod_both_5_15)
+
+# Adults
+mod_both_adults = lme4::glmer(Died_28D~scale(log10(BUN))+scale(log10(Creatinine_fold_change))+Coma+(1|SITE_STUDY),
+                              family='binomial', data = sm_both %>% filter(Age>15))
+summary(mod_both_adults)
+
+### Fit interaction model
+sm_both = sm_both %>% mutate(BUN_log2 = log2(BUN),
+                             Creatinine_FC_log2 = log2(Creatinine_fold_change))
+
+f_brm_mod_both = as.formula(bf(Died_28D ~ BUN_log2*Age_category +
+                                 Creatinine_FC_log2*Age_category+
+                                 Coma+(1|STUDY/SITE_STUDY)))
+mod_both_stan = brm(formula = f_brm_mod_both,
+                    data = sm_both,
+                    family = bernoulli(), cores = 4, seed = 17,
+                    iter = 2000, warmup = 1000, thin = 1, refresh = 250)
+brms::mcmc_plot(mod_both_stan)
+```
+
+
+```{r marginal_effects_children_adults, fig.width=10, fig.height=6}
+posterior <- brms::as_draws_df(mod_both_stan)
+marginal_effects <- posterior %>%
+  mutate(
+    BUN_adults = b_BUN_log2+`b_BUN_log2:Age_category>15`,
+    BUN_U2 = b_BUN_log2,
+    BUN_25 = b_BUN_log2+`b_BUN_log2:Age_category25`,
+    BUN_515 = b_BUN_log2+`b_BUN_log2:Age_category515`,
+    Creat_adults = b_BUN_log2+`b_Age_category>15:Creatinine_FC_log2`,
+    Creat_U2 = b_Creatinine_FC_log2,
+    Creat_25 = b_BUN_log2+`b_Age_category25:Creatinine_FC_log2`,
+    Creat_515 = b_BUN_log2+`b_Age_category515:Creatinine_FC_log2`
+  ) %>%
+  select(BUN_adults, BUN_U2, BUN_25, BUN_515,
+         Creat_adults, Creat_U2, Creat_25, Creat_515) %>%
+  pivot_longer(cols = everything(),
+               names_to = c("Biomarker", "Age_category"),
+               names_pattern = "(.*)_(.*)",
+               values_to = "estimate")
+
+summary_df <- marginal_effects %>%
+  group_by(Biomarker, Age_category) %>%
+  summarise(
+    OR = median(exp(estimate)),
+    lower = quantile(exp(estimate), 0.025),
+    upper = quantile(exp(estimate), 0.975),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Age_category2 = 
+      case_when(
+        Age_category=='25' ~ '[2-5]',
+        Age_category=='515'~ '(5-15]',
+        Age_category=='U2' ~ '<2',
+        Age_category=='adults' ~ '>15'), 
+    Biomarker = case_when(
+      Biomarker=='BUN' ~ 'Urea Nitrogen\n(absolute value)',
+      Biomarker=='Creat' ~ 'Creatinine\n(Fold change from baseline)'),
+    Age_category = factor(Age_category2, levels = c('<2','[2-5]','(5-15]','>15'))
+  ) %>% arrange(Age_category)
+
+ggplot(summary_df, aes(x = Age_category2, y = OR, ymin = lower, ymax = upper, color = Biomarker)) +
+  geom_pointrange(position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  scale_y_log10()+
+  coord_flip() +
+  labs(
+    y = "Odds ratio for death per doubling",
+    x='',
+    title = "Multivariable model of death",
+    color = "Biomarker"
+  ) +
+  theme_minimal(base_size = 16)
 ```
 
