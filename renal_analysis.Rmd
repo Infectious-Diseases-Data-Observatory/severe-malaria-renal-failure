@@ -85,12 +85,12 @@ writeLines(latex_code, "study_summary_table.tex")
 sm_both = sm_data_analysis %>% filter(!is.na(BUN), !is.na(Creatinine_umol_L))
 sm_both %>% ggplot(aes(x=BUN, y=Creatinine_umol_L, colour = STUDY))+
   geom_point()+ scale_x_log10(breaks = breaks, minor_breaks = minor_breaks)+
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_bw()+
   ylab('Creatinine (umol/L)')+xlab('Blood urea nitrogen (mmol/L)')
 
 sm_both %>% ggplot(aes(x=BUN, y=Creatinine_umol_L/BUN, colour = STUDY))+
   geom_point()+ scale_x_log10(breaks = breaks, minor_breaks = minor_breaks)+
-  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_minimal()+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_bw()+
   xlab('Blood urea nitrogen (mmol/L)')+ylab('Creatinine/urea ratio')+
   geom_smooth(aes(group=NA))
 
@@ -99,7 +99,7 @@ sm_both %>%
   ggplot(aes(x=Weight_kg, y=Creatinine_umol_L/BUN, colour = STUDY))+
   geom_point()+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,limits=c(1,100))+
-  theme_minimal()+
+  theme_bw()+
   xlab('Weight (kg)')+ylab('Creatinine/urea ratio')+
   geom_smooth(aes(group=NA))
 ```
@@ -273,8 +273,7 @@ sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
   geom_hline(yintercept = 265)+
   geom_smooth(se=SEsmooth, aes(group=NA))+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
-  theme_minimal()+
-  annotation_logticks(sides='l') + facet_wrap(~STUDY, nrow=2)
+  theme_bw()+ annotation_logticks(sides='l') + facet_wrap(~STUDY, nrow=2)
 ```
 
 
@@ -309,7 +308,7 @@ sm_data_analysis %>% filter(!is.na(BUN)) %>%
   geom_hline(yintercept = 20)+
   geom_smooth(se=SEsmooth, aes(group=NA))+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
-  theme_minimal()+
+  theme_bw()+
   annotation_logticks(sides='l') + facet_wrap(~STUDY, nrow=2)
 ```
 
@@ -345,6 +344,8 @@ levels(sm_data_analysis$BUN_groups)=c("<5","(5,10]","(10,20]",">20")
 levels(sm_data_analysis$Creat_groups)=c("<65","(65,130]","(130,265]",">265")
 
 print(table(Age=sm_data_analysis$Children_Adults, Creatinine=sm_data_analysis$Creat_groups))
+print(table(Age=sm_data_analysis$Children_Adults, Creatinine=sm_data_analysis$Creatinine_umol_L>265))
+
 print(table(Age=sm_data_analysis$Children_Adults, Creatinine_High=sm_data_analysis$Creat_groups=='>265'))
 
 
@@ -382,12 +383,12 @@ p1=summary_df %>% ggplot(aes(x = BUN_groups, y = mortality, group = Coma, colour
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2,
                 position = position_dodge(width = 0.4)) +
   labs(
-    x = "Blood urea nitrogen (mmol/L)",
+    x = "BUN (mmol/L)",
     y = "Mortality (%)",
     size = "Number of Patients",
     title = "Mortality by urea nitrogen, coma, and age"
   ) + geom_hline(yintercept = 100*mortality_threshold)+
-  theme_minimal()+facet_wrap(vars(Children_Adults))
+  theme_bw()+facet_wrap(vars(Children_Adults))
 ```
 
 
@@ -423,7 +424,7 @@ p2=summary_df %>% ggplot(aes(x = Creat_groups, y = mortality, group = Coma, colo
     size = "Number of Patients",
     title = "Mortality by creatinine, coma, and age"
   ) + geom_hline(yintercept = 100*mortality_threshold)+
-  theme_minimal()+facet_wrap(vars(Children_Adults))
+  theme_bw()+facet_wrap(vars(Children_Adults))
 sum(summary_df$n)
 ```
 
@@ -443,7 +444,7 @@ sm_dat_creat %>%
   mutate(STUDY = paste0(STUDY, " (n = ", n(), ")")) %>%
   ggplot(aes(x=Creatinine_umol_L, y = Died_28D))+
   geom_point()+
-  scale_x_log10(minor_breaks=minor_breaks, breaks=breaks)+theme_minimal()+
+  scale_x_log10(minor_breaks=minor_breaks, breaks=breaks)+theme_bw()+
   geom_hline(yintercept = mortality_threshold)+ylab('Proportion dead by day 28')+
   xlab('Creatinine (umol/L)')+ geom_vline(xintercept = 265)+
   geom_smooth(method='gam',method.args = list(family='binomial'))+
@@ -454,7 +455,7 @@ sm_dat_bun %>%
   mutate(STUDY = paste0(STUDY, " (n = ", n(), ")")) %>%
   ggplot(aes(x=BUN, y = Died_28D))+
   geom_point()+
-  scale_x_log10(minor_breaks=minor_breaks, breaks=breaks)+theme_minimal()+
+  scale_x_log10(minor_breaks=minor_breaks, breaks=breaks)+theme_bw()+
   geom_hline(yintercept = mortality_threshold)+ylab('Proportion dead by day 28')+
   xlab('Urea Nitrogen (mmol/L)')+ geom_vline(xintercept = 20)+
   geom_smooth(method='gam',method.args = list(family='binomial'))+
@@ -464,9 +465,13 @@ sm_dat_bun %>%
 sm_dat_bun %>% filter(Coma=='No', STUDY!='TRACT')%>%
   ggplot(aes(x=BUN, y = Died_28D))+
   geom_point()+
-  scale_x_log10(minor_breaks=minor_breaks, breaks=breaks)+theme_minimal()+
+  scale_x_log10(minor_breaks=minor_breaks, breaks=breaks)+theme_bw()+
   geom_hline(yintercept = mortality_threshold)+ylab('Proportion dead by day 28')+
   xlab('Urea Nitrogen (mmol/L)')+ geom_vline(xintercept = 20)+
   geom_smooth(method='gam',method.args = list(family='binomial'))+
   facet_wrap(~Age_category)
 ```
+
+
+
+

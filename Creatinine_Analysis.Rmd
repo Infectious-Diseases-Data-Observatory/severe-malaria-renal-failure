@@ -17,6 +17,7 @@ library(tidyverse)
 library(grid)
 library(gridExtra)
 library(rstanarm)
+library(scales)
 ```
 
 
@@ -43,6 +44,7 @@ load('RData/Analysis_dataset.RData')
 We look at the data from the TRACT study, Malawi site where we have follow-up creatinines and BUN in patients who survived and were not lost to follow-up. We compare these values to the expected values from the Pottel equation.
 
 ```{r}
+baseline_data = sm_data %>% filter(!is.na(Baseline_Creatinine) | !is.na(`Baseline_Urea Nitrogen`)) 
 p1=sm_data %>% filter(!is.na(Baseline_Creatinine)) %>%
   ggplot(aes(x=Weight_kg, y = Baseline_Creatinine))+geom_point()+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+theme_bw()+
@@ -424,5 +426,49 @@ ggplot(summary_df, aes(x = Age_category2, y = OR, ymin = lower, ymax = upper, co
     color = "Biomarker"
   ) +
   theme_bw(base_size = 16)
+```
+
+
+
+
+
+
+
+Plasma HRP2
+```{r PfHRP2_BUN_Creatinine, fig.width=12, fig.height=9}
+library(quantreg)
+p1=sm_data_analysis %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Creatinine_umol_L)) %>%
+  ggplot(aes(x=PfHRP2_ng_ml+1, y = Creatinine_fold_change, colour = STUDY))+
+  geom_jitter(width = .05,height = .01,alpha=0.5)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  theme_bw(base_size = 14)+geom_smooth(se = F, aes(group=NA))+
+  geom_smooth(method = "rq", method.args = list(tau = 0.9), se = FALSE, color = "black",linetype = 2)+
+  xlab('Plasma PfHRP2 (ng/ml)')+ylab('Creatinine fold change')+
+   theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
+        legend.justification = c(0, 1))   # align legend's bottom-left to that point
+
+p2=sm_data_analysis %>% filter(!is.na(PfHRP2_ng_ml), !is.na(BUN)) %>%
+  ggplot(aes(x=PfHRP2_ng_ml+1, y = BUN, colour = STUDY))+
+  geom_jitter(width = .05,height = .01,alpha=0.5)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  theme_bw(base_size = 14)+geom_smooth(se = F, aes(group=NA))+
+  geom_smooth(method = "rq", method.args = list(tau = 0.9), se = FALSE, color = "black",linetype = 2)+
+  xlab('Plasma PfHRP2 (ng/ml)')+ylab('BUN (mmol/L)')+
+   theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
+        legend.justification = c(0, 1))   # align legend's bottom-left to that point
+
+grid.arrange(p1,p2,nrow=1)
+
+writeLines(sprintf('There are %s patients with plasma hrp2 and creatinine measured',
+                   nrow( sm_data_analysis %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Creatinine_umol_L)) )))
+
+writeLines(sprintf('There are %s patients with plasma hrp2 and BUN measured',
+                   nrow( sm_data_analysis %>% filter(!is.na(PfHRP2_ng_ml), !is.na(BUN)) )))
 ```
 
