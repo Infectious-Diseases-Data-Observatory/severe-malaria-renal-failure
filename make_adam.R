@@ -568,6 +568,10 @@ dat_all_final$`Base Excess_mmol_L`[ind] = -1*dat_all_final$`Base Excess_mmol_L`[
 hist(dat_all_final$`Base Excess_mmol_L`, breaks = 200)
 
 
+# Remove Creatinine values in GEZHR - issues with measurement
+ind = which(dat_all_final$STUDYID == 'GEZHR')
+dat_all_final$Creatinine_umol_L[ind]=NA
+
 dat_all_final$Lactate = dat_all_final$`Lactic Acid_mmol_L`
 dat_all_final = dat_all_final%>% select(-`Lactic Acid_mmol_L`)
 dat_all_final$Lactate = ifelse(dat_all_final$Lactate > 30, NA, dat_all_final$Lactate)

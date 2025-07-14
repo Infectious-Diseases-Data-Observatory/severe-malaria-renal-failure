@@ -5,17 +5,11 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
-                      echo = F, include = TRUE, 
-                      fig.width = 8, fig.height = 8,
-                      fig.pos = 'H',dev = 'png', dpi = 300)
-
+```{r setup2, include=FALSE}
 
 library(tidygam)
 library(mgcv)
 library(brms)
-library(conflicted)
 library(tidyverse)
 library(readr)
 library(rtables)
@@ -24,41 +18,9 @@ library(grid)
 library(gridExtra)
 library(naniar)
 library(scales)
-
-#library(worlddatr)
-
-conflicts_prefer(dplyr::filter)
-conflicts_prefer(brms::ar)
-conflicts_prefer(dplyr::collapse)
-conflicts_prefer(dplyr::combine)
-conflicts_prefer(tidyr::extract)
-conflicts_prefer(dplyr::lag)
-conflicts_prefer(brms::s)
-conflicts_prefer(purrr::set_names)
-conflicts_prefer(brms::t2)
-conflicts_prefer(dplyr::group_rows)
-
-binomial_smooth <- function(...) {
-  geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
-}
 ```
 
 
-
-Plotting params
-
-```{r}
-sqrt_breaks = c(1,4,9,16,25,36,50,64,81)
-breaks <- 10^(-10:10)
-minor_breaks <- rep(1:9, 21)*(10^rep(-10:10, each=9))
-
-SEsmooth=F
-my_alpha=0.2
-bun_limits = c(1,100)
-crea_limits = c(10,1000)
-
-mortality_threshold = 0.05
-```
 
 
 ## Load data
@@ -66,6 +28,7 @@ mortality_threshold = 0.05
 
 ```{r load_data}
 sm_data = read_csv('Data/adam_out.csv')
+source('setup_parameters.R')
 sm_data = sm_data%>% arrange(STUDY) %>% 
   mutate(Died_28D = ifelse(`Died within 28 days`=='Yes',1,0))
 table(sm_data$STUDY)
@@ -432,12 +395,12 @@ reasons for exclusion
 sm_data = sm_data %>%
   mutate(Reason_exclude = case_when(
     INCLUDE_CC_ANALYSIS ~ NA,
-    !INCLUDE_CC_ANALYSIS & STUDY=='AQ Gambia' ~ 'AQ Gambia study',
     !INCLUDE_CC_ANALYSIS & is.na(Creatinine_umol_L) & is.na(BUN) ~ 'No BUN or Creatinine measurement',
     !INCLUDE_CC_ANALYSIS & (is.na(Malaria_Positive) | !Malaria_Positive) ~ 'No confirmed malaria',
     !INCLUDE_CC_ANALYSIS & is.na(Died) ~ 'No mortality outcome',
     !INCLUDE_CC_ANALYSIS & is.na(Weight_kg) & is.na(Age) ~ 'No weight/age',
     !INCLUDE_CC_ANALYSIS & is.na(Coma_Final) ~ 'No coma information',
+    !INCLUDE_CC_ANALYSIS & STUDY=='AQ Gambia' ~ 'AQ Gambia study',
     T ~ 'weird!'
   ))
 table(sm_data$Reason_exclude, sm_data$INCLUDE_CC_ANALYSIS, useNA = 'ifany')

@@ -6,18 +6,24 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
+                      echo = F, include = TRUE, 
+                      fig.width = 8, fig.height = 8,
+                      fig.pos = 'H',dev = 'png', dpi = 300)
+library(zscorer)
 ```
 
 
 ```{r}
 # convert SDTM into an analysis format
-source('make_adam.R')
+# source('make_adam.R')
 ```
 
 ```{r render_descriptive_prep, echo=F}
-rmarkdown::render('descriptive_analysis_prep.Rmd')
+# rmarkdown::render('descriptive_analysis_prep.Rmd')
 ```
+
+
 ## Multiple imputation of core variables
 
 ```{r}
@@ -29,9 +35,12 @@ source('multiple_imputation.R')
 
 ```{r}
 rm(list=ls())
+detach("package:mice", unload=TRUE)
+detach("package:conflicted", unload=TRUE)
+
 sm_data = readr::read_csv(file = 'Data/Analysis_data.csv')
 load('RData/imputed_dataset.RData')
-imp1 = complete(imp_list,action = 1)
+imp1 = mice::complete(imp_list,action = 1)
 sm_data$Weight_imputed = imp1$Weight_kg
 sm_data$Age_imputed = imp1$Age
 sm_data$Height_imputed = imp1$Height_cm
@@ -45,7 +54,7 @@ sm_data$Bicarbonate_imputed = imp1$Bicarbonate_mEq_L
 # select datasets with analysis pop from imputed data
 imp_data = list()
 for(i in 1:imp_list$m){
-  xx = complete(imp_list, action = i)
+  xx = mice::complete(imp_list, action = i)
   xx = xx[sm_data$INCLUDE_CC_ANALYSIS, ]
   imp_data[[i]] = xx
 }
@@ -64,7 +73,7 @@ sm_data =
           secondPart = 'age_days',index = 'wfa')
 
 sm_data$wfaz = ifelse(sm_data$wfaz>5 | sm_data$wfaz< -6, NA, sm_data$wfaz)
-sm_data %>% filter(!is.na(wfaz)) %>% 
+sm_data %>% dplyr::filter(!is.na(wfaz)) %>% 
   ggplot(aes(x= Age, y = wfaz, color=SEX))+geom_point()+geom_hline(yintercept = 0) +
   theme_minimal() + xlab('Age (years)')+ylab('Weight for age z-score')+
   geom_smooth(aes(group=NA))+

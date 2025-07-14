@@ -47,8 +47,8 @@ if(!file.exists(f_path) | RUN_STAN_MODELS){
   mod_bun_age_het = 
     brm(formula = f_brm_mod_bun,
         data = sm_data_bun ,
-        family = bernoulli(), cores = 4, seed = 17,
-        iter = 2000, warmup = 1000, thin = 1, refresh = 250)
+        family = bernoulli(), cores = 4, seed = 858,
+        iter = 4000, warmup = 2000, thin = 8, refresh = 250)
   
   mod_bun_age_het2 = 
     brm(formula = f_brm_mod_bun,
@@ -92,6 +92,12 @@ preds = posterior_epred(mod_bun_age_het, newdata = test_data, re_formula = NA)
 test_data$pred_mod_bun_age_het = colMeans(preds)
 test_data$bun_age_het_threshold = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
 
+# Remove TRACT
+preds = posterior_epred(mod_bun_age_het2, newdata = test_data, re_formula = NA)
+test_data$pred_mod_bun_age_het2 = colMeans(preds)
+test_data$bun_age_het_threshold2 = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
+
+
 # High HRP2 model
 test_data3 = test_data %>% filter(Age_category !='>15') %>% mutate(Age_category = droplevels(Age_category))
 preds = posterior_epred(mod_bun_age_het3, newdata = test_data3, re_formula = NA)
@@ -101,28 +107,54 @@ test_data3$bun_age_het_threshold3 = apply(preds, 2, f_threshold,mortality_thresh
 
 
 
-```{r age_vs_BUN, fig.width=10, fig.height=7}
+```{r age_vs_BUN, fig.width=8, fig.height=8}
 p1=test_data %>%
   ggplot(aes(x = BUN, y = pred_mod_bun_age_het, 
              colour = Age_category,linetype = Coma,
              group = interaction(Age_category,Coma)))+
   geom_line()+ ylab('Predicted mortality')+
   scale_x_log10() +
-  annotation_logticks(sides='b')+theme_minimal(base_size = 13)+
+  annotation_logticks(sides='b')+theme_bw(base_size = 13)+
   xlab('Urea Nitrogen (mmol/L)')+
-  geom_hline(yintercept = mortality_threshold)
+  geom_hline(yintercept = mortality_threshold)+
+labs(colour='Age category')+
+  theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
+        legend.justification = c(0, 1))   # align legend's bottom-left to that point
 p1_threshold=test_data %>%
   ggplot(aes(x = BUN, y = bun_age_het_threshold, 
              colour = Age_category,linetype = Coma,
              group = interaction(Age_category,Coma)))+
   geom_line()+ylab('Probability mortality > 5%')+
-  scale_x_log10() + theme_minimal(base_size = 13)+
+  scale_x_log10() + theme_bw(base_size = 13)+
+  annotation_logticks(sides='b')+
+  xlab('Urea Nitrogen (mmol/L)')+
+  geom_hline(yintercept = .9)+geom_vline(xintercept = 10)+
+  theme(legend.position = 'none')
+grid.arrange(p1, p1_threshold)
+```
+
+
+```{r age_vs_BUN_remove_TRACT, fig.width=10, fig.height=7}
+p1=test_data %>%
+  ggplot(aes(x = BUN, y = pred_mod_bun_age_het2, 
+             colour = Age_category,linetype = Coma,
+             group = interaction(Age_category,Coma)))+
+  geom_line()+ ylab('Predicted mortality')+
+  scale_x_log10() +
+  annotation_logticks(sides='b')+theme_bw(base_size = 13)+
+  xlab('Urea Nitrogen (mmol/L)')+
+  geom_hline(yintercept = mortality_threshold)
+p1_threshold=test_data %>%
+  ggplot(aes(x = BUN, y = bun_age_het_threshold2, 
+             colour = Age_category,linetype = Coma,
+             group = interaction(Age_category,Coma)))+
+  geom_line()+ylab('Probability mortality > 5%')+
+  scale_x_log10() + theme_bw(base_size = 13)+
   annotation_logticks(sides='b')+
   xlab('Urea Nitrogen (mmol/L)')+
   geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
 grid.arrange(p1, p1_threshold)
 ```
-
 
 
 ```{r age_vs_BUN_high_hrp2, fig.width=10, fig.height=7}
@@ -132,7 +164,7 @@ p1=test_data3 %>%
              group = interaction(Age_category,Coma)))+
   geom_line()+ ylab('Predicted mortality')+
   scale_x_log10() +
-  annotation_logticks(sides='b')+theme_minimal(base_size = 13)+
+  annotation_logticks(sides='b')+theme_bw(base_size = 13)+
   xlab('Urea Nitrogen (mmol/L)')+
   geom_hline(yintercept = mortality_threshold)
 p1_threshold=test_data3 %>%
@@ -140,7 +172,7 @@ p1_threshold=test_data3 %>%
              colour = Age_category,linetype = Coma,
              group = interaction(Age_category,Coma)))+
   geom_line()+ylab('Probability mortality > 5%')+
-  scale_x_log10() + theme_minimal(base_size = 13)+
+  scale_x_log10() + theme_bw(base_size = 13)+
   annotation_logticks(sides='b')+
   xlab('Urea Nitrogen (mmol/L)')+
   geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
