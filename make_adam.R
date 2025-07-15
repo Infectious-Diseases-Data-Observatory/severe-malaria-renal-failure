@@ -171,6 +171,10 @@ clinical_baseline = clinical_baseline %>%
     T ~ NA
   ))
 table(clinical_baseline$Coma_Final, clinical_baseline$STUDYID,useNA = 'ifany')
+colnames(clinical_baseline)
+clinical_baseline = clinical_baseline %>% 
+  mutate(Coma=Coma_Final) %>% 
+  select(-Coma_Final, -coma_RS)
 
 ## Get lab data
 lb_SM = read_csv(f_path('LB'),na = "\\N")

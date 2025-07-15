@@ -59,6 +59,8 @@ for(i in 1:imp_list$m){
   imp_data[[i]] = xx
 }
 rm(imp_list)
+
+save(imp_data, file = 'RData/imputed_analysis_datasets.RData')
 ```
 
 compute weight for age z-scores
@@ -87,7 +89,7 @@ Final analysis datasets
 ```{r}
 sm_data_analysis = sm_data %>% 
   filter(INCLUDE_CC_ANALYSIS) %>%
-  mutate(Coma = ifelse(Coma_Final==1,'Yes','No'),
+  mutate(Coma = ifelse(Coma==1,'Yes','No'),
          Weight_category = cut(Weight_imputed, breaks = c(0,30,100), labels = c(">30","≤30"),include.lowest=T),
          Age_category = cut(Age_imputed, breaks = c(0,2,5,15,100), labels = c("≤2","(2,5]","(5,15]",">15")))
 

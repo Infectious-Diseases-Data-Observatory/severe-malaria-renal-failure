@@ -382,12 +382,15 @@ p1=summary_df %>% ggplot(aes(x = BUN_groups, y = mortality, group = Coma, colour
   geom_point(aes(size = n), position = position_dodge(width = 0.4)) +
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2,
                 position = position_dodge(width = 0.4)) +
+  scale_size(trans = "sqrt",  # visual transformation
+             range = c(1, 8),
+             breaks = c(100, 500, 2000),  # values of n you want to show
+             labels = c("100", "500", "2000")) + 
   labs(
     x = "BUN (mmol/L)",
     y = "Mortality (%)",
-    size = "Number of Patients",
-    title = "Mortality by urea nitrogen, coma, and age"
-  ) + geom_hline(yintercept = 100*mortality_threshold)+
+    size = "n") + 
+  geom_hline(yintercept = 100*mortality_threshold)+
   theme_bw()+facet_wrap(vars(Children_Adults))
 ```
 
@@ -418,12 +421,14 @@ p2=summary_df %>% ggplot(aes(x = Creat_groups, y = mortality, group = Coma, colo
   geom_point(aes(size = n), position = position_dodge(width = 0.4)) +
   geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2,
                 position = position_dodge(width = 0.4)) +
+  scale_size(trans = "sqrt",  # visual transformation
+             range = c(1, 8),
+             breaks = c(100, 500, 2000),  # values of n you want to show
+             labels = c("100", "500", "2000")) +
   labs(
     x = "Creatinine (umol/L)",
     y = "Mortality (%)",
-    size = "Number of Patients",
-    title = "Mortality by creatinine, coma, and age"
-  ) + geom_hline(yintercept = 100*mortality_threshold)+
+    size = "n") + geom_hline(yintercept = 100*mortality_threshold)+
   theme_bw()+facet_wrap(vars(Children_Adults))
 sum(summary_df$n)
 ```
@@ -434,6 +439,7 @@ sum(summary_df$n)
 
 ```{r non_para_mortality}
 grid.arrange(p1,p2)
+
 ```
 
 #### Individual studies

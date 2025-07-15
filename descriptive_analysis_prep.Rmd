@@ -42,7 +42,7 @@ cols_check = c("SITEID","ARM","COUNTRY","SEX","Age","Died",
                "Respiratory Rate_breaths_min",
                "Systolic Blood Pressure_mmHg","Temperature_C",
                "Weight_kg","Oxygen Saturation_%","Diastolic Blood Pressure_mmHg",
-               "Coma_Final","Respiratory distress","Shock",
+               "Coma","Respiratory distress","Shock",
                "Hypoglycaemia","Seizure","Jaundice",
                "Blood in urine","Anemia","Hyperparasitaemia",
                "Anuria","GCS_tot","BCS_tot","para_ul","Malaria_RDT","PfHRP2_ng_ml",
@@ -353,7 +353,7 @@ sm_data = sm_data %>%
       is.na(Malaria_Positive) | # no malaria confirmation
       is.na(Died) | # no outcome
       (is.na(Creatinine_umol_L) & is.na(BUN)) | # no creatinine or bun
-      is.na(Coma_Final) | # no coma status
+      is.na(Coma) | # no coma status
       !Malaria_Positive |
       STUDY=='AQ Gambia'),
     
@@ -361,7 +361,7 @@ sm_data = sm_data %>%
       !(is.na(Weight_kg) |is.na(Age)) & # both age and weight missing
       !is.na(Died) & # no outcome
       (!is.na(Creatinine_umol_L) | !is.na(BUN)) & # no creatinine or bun
-      !is.na(Coma_Final) )
+      !is.na(Coma) )
 
 table(sm_data$INCLUDE_CC_ANALYSIS,useNA = 'ifany')
 
@@ -398,7 +398,7 @@ sm_data = sm_data %>%
     !INCLUDE_CC_ANALYSIS & (is.na(Malaria_Positive) | !Malaria_Positive) ~ 'No confirmed malaria',
     !INCLUDE_CC_ANALYSIS & is.na(Died) ~ 'No mortality outcome',
     !INCLUDE_CC_ANALYSIS & is.na(Weight_kg) & is.na(Age) ~ 'No weight/age',
-    !INCLUDE_CC_ANALYSIS & is.na(Coma_Final) ~ 'No coma information',
+    !INCLUDE_CC_ANALYSIS & is.na(Coma) ~ 'No coma information',
     !INCLUDE_CC_ANALYSIS & STUDY=='AQ Gambia' ~ 'AQ Gambia study',
     T ~ 'weird!'
   ))

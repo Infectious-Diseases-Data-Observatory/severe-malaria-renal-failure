@@ -16,10 +16,12 @@ sm_data = readr::read_csv('Data/Analysis_data.csv')
 key_cols=c("STUDY","SEX","Age","Died",'Mid-Upper Arm Circumference_cm',
            "Weight_kg","Hb", "Lactate","Height_cm",'Anemia',
            "Base Excess_mmol_L","Bicarbonate_mEq_L",
-           "Creatinine_umol_L","BUN", 'Creat_BUN_ratio')
+           "Creatinine_umol_L","BUN", 'Creat_BUN_ratio', 
+           'Seizure', 'Coma')
 p1=vis_miss(sm_data %>% select(all_of(key_cols)), sort_miss = T)
 p1
-p2=vis_miss(sm_data %>% dplyr::filter(INCLUDE_CC_ANALYSIS) %>% select(all_of(key_cols)), sort_miss = T)
+p2=vis_miss(sm_data %>% dplyr::filter(INCLUDE_CC_ANALYSIS) %>% 
+              select(all_of(key_cols)), sort_miss = T)
 p2
 ggsave(filename = 'Missing_key_data.pdf', plot = p1)
 ggsave(filename = 'Missing_key_data_analysis_pop.pdf', plot = p2)
@@ -41,9 +43,10 @@ p4=sm_data %>% ggplot(aes(x=Bicarbonate_mEq_L, y = Lactate, colour = STUDY))+geo
 gridExtra::grid.arrange(p1,p2,p3,p4)
 
 colnames(sm_data)
-set.seed(5237)
-imp_list = mice(sm_data, m = 5,  printFlag = T, maxit = 15,
-                method = c("","","rf","","rf","rf","norm","rf","rf","rf","norm","norm",'norm',"norm","norm"))
+set.seed(946)
+imp_list = mice(sm_data, m = 1,  printFlag = T, maxit = 15,
+                method = c("","","rf","","rf","rf","rf","rf","rf","rf",
+                           "rf","rf",'rf','rf','rf',"rf","rf"))
 xx = complete(imp_list,action = 1)
 numeric_df <- xx %>% select(where(is.numeric))
 p1=xx %>% ggplot(aes(x=Age, y = Height_cm, colour = STUDY))+geom_point()+geom_smooth(aes(group=NA))

@@ -43,7 +43,7 @@ load('RData/Analysis_dataset.RData')
 
 We look at the data from the TRACT study, Malawi site where we have follow-up creatinines and BUN in patients who survived and were not lost to follow-up. We compare these values to the expected values from the Pottel equation.
 
-```{r}
+```{r baseline_creatinine_BUN}
 baseline_data = sm_data %>% filter(!is.na(Baseline_Creatinine) | !is.na(`Baseline_Urea Nitrogen`)) 
 p1=sm_data %>% filter(!is.na(Baseline_Creatinine)) %>%
   ggplot(aes(x=Weight_kg, y = Baseline_Creatinine))+geom_point()+
@@ -265,7 +265,7 @@ sm_data_creat %>%
 Model using Pottel equation (children) and CG (adults)
 
 ```{r creatinine_fc_baseline_mortality_Pottel}
-p1=test_data %>%
+p1c=test_data %>%
   ggplot(aes(x = Creatinine_fold_change, y = pred_mod_creat_age_het, 
              colour =Age_category,linetype = Coma,
              group = interaction(Age_category,Coma)))+
@@ -279,7 +279,7 @@ p1=test_data %>%
         legend.justification = c(0, 1))   # align legend's bottom-left to that point
 
 
-p1_threshold=test_data %>%
+p1c_threshold=test_data %>%
   ggplot(aes(x = Creatinine_fold_change, y = creat_age_het_threshold, 
              colour = Age_category,linetype = Coma,
              group = interaction(Age_category,Coma)))+
@@ -289,7 +289,7 @@ p1_threshold=test_data %>%
   xlab('Creatinine fold change')+
   geom_hline(yintercept = .9)+geom_vline(xintercept = 3)+
   theme(legend.position = 'none')
-grid.arrange(p1, p1_threshold)
+grid.arrange(p1c, p1c_threshold)
 
 
 sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
@@ -299,6 +299,16 @@ sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
   scale_x_sqrt()+theme_bw(base_size = 14)+
   geom_vline(xintercept = c(2, 5,15))
 ```
+
+
+Combined figure with BUN for paper
+
+```{r combined_fig, fig.width=12, fig.height=10}
+load('RData/bun_figures.RData')
+# combined fig 3
+grid.arrange(p1c, p1+theme(legend.position = 'none'), p1c_threshold, p1_threshold)
+```
+
 
 
 
@@ -409,10 +419,10 @@ summary_df <- marginal_effects %>%
         Age_category=='U2' ~ '<2',
         Age_category=='adults' ~ '>15'), 
     Biomarker = case_when(
-      Biomarker=='BUN' ~ 'Urea Nitrogen\n(absolute value)',
+      Biomarker=='BUN' ~ 'BUN\n(absolute value)',
       Biomarker=='Creat' ~ 'Creatinine\n(Fold change from baseline)'),
     Age_category = factor(Age_category2, levels = c('<2','[2-5]','(5-15]','>15'))
-  ) %>% arrange(Age_category)
+  ) %>% arrange(Biomarker, Age_category)
 
 ggplot(summary_df, aes(x = Age_category2, y = OR, ymin = lower, ymax = upper, color = Biomarker)) +
   geom_pointrange(position = position_dodge(width = 0.5)) +
@@ -470,5 +480,81 @@ writeLines(sprintf('There are %s patients with plasma hrp2 and creatinine measur
 
 writeLines(sprintf('There are %s patients with plasma hrp2 and BUN measured',
                    nrow( sm_data_analysis %>% filter(!is.na(PfHRP2_ng_ml), !is.na(BUN)) )))
+```
+
+
+
+## Comparison with a lactate threshold of 5 mmol/L
+
+```{r lactate}
+mod_bun = lme4::glmer(Died ~ Age_category + Coma + as.numeric(BUN>10) + (1|STUDY), family = 'binomial', data = sm_data_analysis %>% filter(Age<15))
+# summary(mod_bun)
+fixef(mod_bun)
+
+mod_creat = lme4::glmer(Died ~ Age_category + Coma + as.numeric(Creatinine_fold_change>3) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
+# summary(mod_creat)
+fixef(mod_creat)
+
+mod_lactate = lme4::glmer(Died ~ Age_category + Coma + as.numeric(Lactate>5) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
+# summary(mod_lactate)
+fixef(mod_lactate)
+
+mod_lactate2 = lme4::glmer(Died ~ Age_category + Coma + as.numeric(Lactate>5)*as.numeric(Hb<5) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
+summary(mod_lactate2)
+fixef(mod_lactate2)
+
+mod_both = lme4::glmer(Died ~ Age_category + Coma + as.numeric(Lactate>5) + as.numeric(BUN>10) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
+summary(mod_both)
+fixef(mod_both)
+```
+
+
+## Venn diagrams
+
+```{r venn_diagrams}
+library(ggvenn)
+load('RData/imputed_analysis_datasets.RData')
+sm_data_imputed_children = imp_data[[1]] %>% filter(Age<15)
+sm_data_imputed_adults = imp_data[[1]] %>% filter(Age>=15)
+
+data_venn_children = list(Cerebral = which(sm_data_imputed_children$Coma==0),
+                 Uraemia = which(sm_data_imputed_children$log10_BUN>1),
+                 Acidosis = which(sm_data_imputed_children$Lactate>5))
+
+data_venn_adults = list(Cerebral = which(sm_data_imputed_adults$Coma==0),
+                 Uraemia = which(sm_data_imputed_adults$log10_BUN>1),
+                 Acidosis = which(sm_data_imputed_adults$Lactate>5))
+
+p1 = ggvenn(data = data_venn_children,
+            fill_color = c("pink", "lightgreen", "orange"),
+       show_percentage = T, auto_scale = T)
+
+p2 = ggvenn(data = data_venn_adults,
+            fill_color = c("pink", "lightgreen", "orange"),
+       show_percentage = FALSE)
+
+grid.arrange(p1,p2)
+```
+
+
+
+```{r}
+# Create logical vectors
+Cerebral <- sm_data_imputed_children$Coma == 1
+mean(Cerebral)
+Uremia <- sm_data_imputed_children$log10_BUN > 1
+mean(Uremia)
+Acidosis <- sm_data_imputed_children$Lactate > 5
+
+# Use eulerr to calculate set sizes and overlaps
+fit <- euler(c(
+  "Cerebral" = sum(Cerebral & !Uremia & !Acidosis),
+  "Uremia" = sum(!Cerebral & Uremia & !Acidosis),
+  "Acidosis" = sum(!Cerebral & !Uremia & Acidosis),
+  "Cerebral&Uremia" = sum(Cerebral & Uremia & !Acidosis),
+  "Cerebral&Acidosis" = sum(Cerebral & !Uremia & Acidosis),
+  "Uremia&Acidosis" = sum(!Cerebral & Uremia & Acidosis),
+  "Cerebral&Uremia&Acidosis" = sum(Cerebral & Uremia & Acidosis)
+))
 ```
 

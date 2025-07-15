@@ -115,7 +115,7 @@ p1=test_data %>%
   geom_line()+ ylab('Predicted mortality')+
   scale_x_log10() +
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+
-  xlab('Urea Nitrogen (mmol/L)')+
+  xlab('BUN (mmol/L)')+
   geom_hline(yintercept = mortality_threshold)+
 labs(colour='Age category')+
   theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
@@ -127,10 +127,11 @@ p1_threshold=test_data %>%
   geom_line()+ylab('Probability mortality > 5%')+
   scale_x_log10() + theme_bw(base_size = 13)+
   annotation_logticks(sides='b')+
-  xlab('Urea Nitrogen (mmol/L)')+
+  xlab('BUN (mmol/L)')+
   geom_hline(yintercept = .9)+geom_vline(xintercept = 10)+
   theme(legend.position = 'none')
 grid.arrange(p1, p1_threshold)
+save(p1,p1_threshold, file = 'RData/bun_figures.RData')
 ```
 
 
@@ -142,7 +143,7 @@ p1=test_data %>%
   geom_line()+ ylab('Predicted mortality')+
   scale_x_log10() +
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+
-  xlab('Urea Nitrogen (mmol/L)')+
+  xlab('BUN (mmol/L)')+
   geom_hline(yintercept = mortality_threshold)
 p1_threshold=test_data %>%
   ggplot(aes(x = BUN, y = bun_age_het_threshold2, 
@@ -151,7 +152,7 @@ p1_threshold=test_data %>%
   geom_line()+ylab('Probability mortality > 5%')+
   scale_x_log10() + theme_bw(base_size = 13)+
   annotation_logticks(sides='b')+
-  xlab('Urea Nitrogen (mmol/L)')+
+  xlab('BUN (mmol/L)')+
   geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
 grid.arrange(p1, p1_threshold)
 ```
@@ -165,7 +166,7 @@ p1=test_data3 %>%
   geom_line()+ ylab('Predicted mortality')+
   scale_x_log10() +
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+
-  xlab('Urea Nitrogen (mmol/L)')+
+  xlab('BUN (mmol/L)')+
   geom_hline(yintercept = mortality_threshold)
 p1_threshold=test_data3 %>%
   ggplot(aes(x = BUN, y = bun_age_het_threshold3, 
@@ -174,8 +175,11 @@ p1_threshold=test_data3 %>%
   geom_line()+ylab('Probability mortality > 5%')+
   scale_x_log10() + theme_bw(base_size = 13)+
   annotation_logticks(sides='b')+
-  xlab('Urea Nitrogen (mmol/L)')+
+  xlab('BUN (mmol/L)')+
   geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
 grid.arrange(p1, p1_threshold)
 ```
+
+
+
 

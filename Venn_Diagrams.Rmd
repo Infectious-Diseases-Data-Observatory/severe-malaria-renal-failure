@@ -1,0 +1,142 @@
+---
+title: "Renal Analysis Severe Malaria"
+author: "James Watson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
+                      echo = F, include = TRUE, 
+                      fig.width = 8, fig.height = 8,
+                      fig.pos = 'H',dev = 'png', dpi = 300)
+
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(eulerr)
+
+```
+
+
+
+Plotting params
+
+```{r}
+source('setup_parameters.R')
+```
+
+
+## Load analysis data
+
+Analysis dataset
+```{r}
+load('RData/Analysis_dataset.RData')
+sm_data_analysis_children = sm_data_analysis %>% filter(Age<15, !is.na(BUN), !is.na(Lactate), !is.na(Hb))
+dim(sm_data_analysis_children)
+sm_data_analysis_adults = sm_data_analysis %>% filter(Age>=15, !is.na(BUN), !is.na(Lactate), !is.na(Hb))
+dim(sm_data_analysis_adults)
+```
+
+
+## Venn/Euler diagrams
+
+```{r imputed_data}
+load('RData/imputed_analysis_datasets.RData')
+sm_data_imputed_children = imp_data[[1]] %>% filter(Age<15)
+sm_data_imputed_adults = imp_data[[1]] %>% filter(Age>=15)
+```
+
+
+function
+
+```{r}
+make_euler_sm = function(Cerebral, SevereAnaemia, Uraemia, Acidosis){
+  # Euler input: Count all relevant combinations
+  fit <- euler(c(
+    "Cerebral" = sum(Cerebral & !Uraemia & !Acidosis & !SevereAnaemia),
+    "Uraemia" = sum(!Cerebral & Uraemia & !Acidosis & !SevereAnaemia),
+    "Acidosis" = sum(!Cerebral & !Uraemia & Acidosis & !SevereAnaemia),
+    "Anaemia" = sum(!Cerebral & !Uraemia & !Acidosis & SevereAnaemia),
+    
+    "Cerebral&Uraemia" = sum(Cerebral & Uraemia & !Acidosis & !SevereAnaemia),
+    "Cerebral&Acidosis" = sum(Cerebral & !Uraemia & Acidosis & !SevereAnaemia),
+    "Cerebral&Anaemia" = sum(Cerebral & !Uraemia & !Acidosis & SevereAnaemia),
+    "Uraemia&Acidosis" = sum(!Cerebral & Uraemia & Acidosis & !SevereAnaemia),
+    "Uraemia&Anaemia" = sum(!Cerebral & Uraemia & !Acidosis & SevereAnaemia),
+    "Acidosis&Anaemia" = sum(!Cerebral & !Uraemia & Acidosis & SevereAnaemia),
+    
+    "Cerebral&Uraemia&Acidosis" = sum(Cerebral & Uraemia & Acidosis & !SevereAnaemia),
+    "Cerebral&Uraemia&Anaemia" = sum(Cerebral & Uraemia & !Acidosis & SevereAnaemia),
+    "Cerebral&Acidosis&Anaemia" = sum(Cerebral & !Uraemia & Acidosis & SevereAnaemia),
+    "Uraemia&Acidosis&Anaemia" = sum(!Cerebral & Uraemia & Acidosis & SevereAnaemia),
+    
+    "Cerebral&Uraemia&Acidosis&Anaemia" = sum(Cerebral & Uraemia & Acidosis & SevereAnaemia)
+  ))
+  
+  
+  plot(fit, fills = c("pink", "darkgreen", "orange","purple"), labels = TRUE, edges = TRUE,quantities = T)
+}
+```
+
+
+```{r euler_diagram_children}
+# Create logical vectors
+Cerebral_imp = sm_data_imputed_children$Coma == 1
+mean(Cerebral_imp)
+Cerebral_obs = sm_data_analysis_children$Coma == "Yes"
+mean(Cerebral_obs)
+
+Uraemia_imp = sm_data_imputed_children$log10_BUN > 1
+mean(Uraemia_imp)
+Uraemia_obs = sm_data_analysis_children$BUN > 10
+mean(Uraemia_obs)
+
+Acidosis_imp = sm_data_imputed_children$Lactate > 5
+mean(Acidosis_imp)
+Acidosis_obs = sm_data_analysis_children$Lactate > 5
+mean(Acidosis_obs)
+
+SevereAnaemia_imp = sm_data_imputed_children$Hb < 5
+mean(SevereAnaemia_imp)
+SevereAnaemia_obs = sm_data_analysis_children$Hb < 5
+mean(SevereAnaemia_obs)
+
+table(SevereAnaemia_imp|Acidosis_imp|Uraemia_imp|Cerebral_imp)
+make_euler_sm(Cerebral = Cerebral_imp, SevereAnaemia = SevereAnaemia_imp, Acidosis = Acidosis_imp, Uraemia = Uraemia_imp)
+
+make_euler_sm(Cerebral = Cerebral_obs, SevereAnaemia = SevereAnaemia_obs, Acidosis = Acidosis_obs, Uraemia = Uraemia_obs)
+
+```
+
+
+
+```{r euler_diagram_adults}
+# Create logical vectors
+Cerebral_imp = sm_data_imputed_adults$Coma == 1
+mean(Cerebral_imp)
+Cerebral_obs = sm_data_analysis_adults$Coma == "Yes"
+mean(Cerebral_obs)
+
+Uraemia_imp = sm_data_imputed_adults$log10_BUN > 1
+mean(Uraemia_imp)
+Uraemia_obs = sm_data_analysis_adults$BUN > 10
+mean(Uraemia_obs)
+
+Acidosis_imp = sm_data_imputed_adults$Lactate > 5
+mean(Acidosis_imp)
+Acidosis_obs = sm_data_analysis_adults$Lactate > 5
+mean(Acidosis_obs)
+
+SevereAnaemia_imp = sm_data_imputed_adults$Hb < 5
+mean(SevereAnaemia_imp)
+SevereAnaemia_obs = sm_data_analysis_adults$Hb < 5
+mean(SevereAnaemia_obs)
+table(SevereAnaemia_imp|Acidosis_imp|Uraemia_imp|Cerebral_imp)
+
+make_euler_sm(Cerebral = Cerebral_imp, SevereAnaemia = SevereAnaemia_imp, Acidosis = Acidosis_imp, Uraemia = Uraemia_imp)
+
+make_euler_sm(Cerebral = Cerebral_obs, SevereAnaemia = SevereAnaemia_obs, Acidosis = Acidosis_obs, Uraemia = Uraemia_obs)
+
+```
+

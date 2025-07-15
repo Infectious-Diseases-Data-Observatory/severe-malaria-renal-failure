@@ -40,11 +40,11 @@ Analysis of BUN data stratified by age group and coma status
 
 ```{r}
 sm_data_lactate = sm_data_analysis %>% filter(!is.na(Lactate), !is.na(Hb)) %>%
-  mutate(Hb_less_5 = as.numeric(Hb<5))
+  mutate(Hb_less_5 = Hb<5)
 sm_data_lactate %>% ggplot(aes(x=Lactate, colour = Hb_less_5))+geom_density()+
   theme_bw()
 
-f_brm_mod_lac = as.formula(bf(Died_28D ~ s(Lactate,by=Hb_less_5)+Coma+(1|STUDY/SITE_STUDY)))
+f_brm_mod_lac = as.formula(bf(Died_28D ~ s(Lactate,by=Hb_less_5,k=4)+Coma+(1|STUDY/SITE_STUDY)))
 
 f_path = 'RData/lactate_models.RData'
 RUN_STAN_MODELS=F
@@ -66,7 +66,7 @@ if(!file.exists(f_path) | RUN_STAN_MODELS){
   #       data = sm_data_bun %>% filter(PfHRP2_ng_ml > 800),
   #       family = bernoulli(), cores = 4, seed = 17,
   #       iter = 2000, warmup = 1000, thin = 1, refresh = 250)
-
+  
   save(mod_lactate_age_het,
        # mod_bun_age_het2,mod_bun_age_het3,
        file = f_path)
@@ -81,7 +81,7 @@ if(!file.exists(f_path) | RUN_STAN_MODELS){
 k_vals=40
 test_data = expand_grid(Lactate = seq(0, 15,length.out=k_vals),
                         Age_category=unique(sm_data_lactate$Age_category),
-                        Hb_less_5=0:1,
+                        Hb_less_5=c(T,F),
                         Coma=unique(sm_data_lactate$Coma),
                         STUDY=unique(sm_data_lactate$STUDY), 
                         SITE_STUDY = -1) %>% 
@@ -108,74 +108,44 @@ test_data$lactate_age_het_threshold = apply(preds, 2, f_threshold,mortality_thre
 
 
 
-```{r age_vs_BUN, fig.width=8, fig.height=8}
-p1=test_data %>% filter(Coma=='No') %>%
-  mutate(Hb_less_5 = as.factor(Hb_less_5)) %>%
-  ggplot(aes(x = Lactate, y = pred_mod_lactate_age_het, 
-             linetype = Hb_less_5,
-             group = Hb_less_5))+
-  geom_line()+ ylab('Predicted mortality')+
+```{r Lactate_mortality_by_hb, fig.width=8, fig.height=8}
+p1=test_data %>%
+  filter(Coma == 'No') %>%
+  ggplot(aes(x = Lactate, y = pred_mod_lactate_age_het,
+             color = Hb_less_5,
+             linetype = Hb_less_5)) +
+  geom_line() +
+  scale_color_manual(
+    values = c(`TRUE` = "darkred", `FALSE` = "blue"),
+    labels = c(`TRUE` = "Hb < 5 g/dL", `FALSE` = "Hb ≥ 5 g/dL")
+  ) +
+  scale_linetype_manual(
+    values = c(`TRUE` = "dashed", `FALSE` = "solid"),
+    labels = c(`TRUE` = "Hb < 5 g/dL", `FALSE` = "Hb ≥ 5 g/dL")
+  ) +
+  labs(colour = "Hb status", linetype = "Hb status")+
+  ylab('Predicted mortality')+
   theme_bw(base_size = 13)+
-  xlab('Lactate (mmol/L)')+
+  xlab('Lactate (mmol/L)')+geom_vline(xintercept = 5)+
   geom_hline(yintercept = mortality_threshold)+
-labs(colour='Age category')+
   theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
         legend.justification = c(0, 1))   # align legend's bottom-left to that point
-p1_threshold=test_data %>%
-  ggplot(aes(x = Lactate, y = lact, 
-             colour = Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
-  geom_line()+ylab('Probability mortality > 5%')+
-  scale_x_log10() + theme_bw(base_size = 13)+
-  annotation_logticks(sides='b')+
-  xlab('Urea Nitrogen (mmol/L)')+
-  geom_hline(yintercept = .9)+geom_vline(xintercept = 10)+
+p1_threshold=test_data %>%filter(Coma=='No') %>%
+  
+  ggplot(aes(x = Lactate, y = lactate_age_het_threshold,
+             color = Hb_less_5,
+             linetype = Hb_less_5)) +
+  geom_line() +ylab('Probability mortality > 5%')+
+  scale_color_manual(
+    values = c(`TRUE` = "darkred", `FALSE` = "blue"),
+    labels = c(`TRUE` = "Hb < 5 g/dL", `FALSE` = "Hb ≥ 5 g/dL")
+  ) +
+  scale_linetype_manual(
+    values = c(`TRUE` = "dashed", `FALSE` = "solid"),
+    labels = c(`TRUE` = "Hb < 5 g/dL", `FALSE` = "Hb ≥ 5 g/dL")
+  ) +   theme_bw(base_size = 13)+
+  geom_hline(yintercept = .9)+
+  xlab('Lactate (mmol/L)')+geom_vline(xintercept = 5)+
   theme(legend.position = 'none')
-grid.arrange(p1, p1_threshold)
-```
-
-
-```{r age_vs_BUN_remove_TRACT, fig.width=10, fig.height=7}
-p1=test_data %>%
-  ggplot(aes(x = BUN, y = pred_mod_bun_age_het2, 
-             colour = Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
-  geom_line()+ ylab('Predicted mortality')+
-  scale_x_log10() +
-  annotation_logticks(sides='b')+theme_bw(base_size = 13)+
-  xlab('Urea Nitrogen (mmol/L)')+
-  geom_hline(yintercept = mortality_threshold)
-p1_threshold=test_data %>%
-  ggplot(aes(x = BUN, y = bun_age_het_threshold2, 
-             colour = Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
-  geom_line()+ylab('Probability mortality > 5%')+
-  scale_x_log10() + theme_bw(base_size = 13)+
-  annotation_logticks(sides='b')+
-  xlab('Urea Nitrogen (mmol/L)')+
-  geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
-grid.arrange(p1, p1_threshold)
-```
-
-
-```{r age_vs_BUN_high_hrp2, fig.width=10, fig.height=7}
-p1=test_data3 %>%
-  ggplot(aes(x = BUN, y = pred_mod_bun_age_het3, 
-             colour =Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
-  geom_line()+ ylab('Predicted mortality')+
-  scale_x_log10() +
-  annotation_logticks(sides='b')+theme_bw(base_size = 13)+
-  xlab('Urea Nitrogen (mmol/L)')+
-  geom_hline(yintercept = mortality_threshold)
-p1_threshold=test_data3 %>%
-  ggplot(aes(x = BUN, y = bun_age_het_threshold3, 
-             colour = Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
-  geom_line()+ylab('Probability mortality > 5%')+
-  scale_x_log10() + theme_bw(base_size = 13)+
-  annotation_logticks(sides='b')+
-  xlab('Urea Nitrogen (mmol/L)')+
-  geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
 grid.arrange(p1, p1_threshold)
 ```
