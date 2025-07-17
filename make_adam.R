@@ -172,8 +172,8 @@ clinical_baseline = clinical_baseline %>%
   ))
 table(clinical_baseline$Coma_Final, clinical_baseline$STUDYID,useNA = 'ifany')
 colnames(clinical_baseline)
-clinical_baseline = clinical_baseline %>% 
-  mutate(Coma=Coma_Final) %>% 
+clinical_baseline = clinical_baseline %>%
+  mutate(Coma=Coma_Final) %>%
   select(-Coma_Final, -coma_RS)
 
 ## Get lab data
@@ -189,6 +189,9 @@ lb_SM$EPOCH[lb_SM$LBTEST=='Creatinine' & lb_SM$STUDYID=='AWPDN']='BASELINE'
 ind = which(lb_SM$LBTEST=='Leukocytes'&lb_SM$STUDYID=='ITYCK'&lb_SM$LBSTRESU=="10^6/L")
 lb_SM$LBSTRESN[ind] = as.numeric(lb_SM$LBSTRESN[ind])/10^3
 lb_SM$LBSTRESU[ind] = "10^9/L"
+
+ind = which(lb_SM$LBTEST=='Potassium'&lb_SM$STUDYID=='ZQEVB'&lb_SM$LBSTRESN>999)
+lb_SM$LBSTRESN[ind]=NA
 
 ind = which(lb_SM$LBTEST=='Urea'&lb_SM$STUDYID=='ITYCK')
 lb_SM$LBTEST[ind] = 'Urea Nitrogen'
@@ -581,6 +584,24 @@ dat_all_final = dat_all_final%>% select(-`Lactic Acid_mmol_L`)
 dat_all_final$Lactate = ifelse(dat_all_final$Lactate > 30, NA, dat_all_final$Lactate)
 dat_all_final$Lactate = ifelse(dat_all_final$Lactate > 20, 20, dat_all_final$Lactate)
 hist(dat_all_final$Lactate, breaks = 200)
+
+# remove wrong Sodium values in the Kilifi study which were swapped with the Potassium
+ind = which(dat_all_final$Sodium_mmol_L > 500 )
+dat_all_final$Sodium_mmol_L[ind] = NA
+ind_swapped = dat_all_final$Sodium_mmol_L<15 & dat_all_final$Potassium_mmol_L>100
+
+plot(dat_all_final$Sodium_mmol_L, dat_all_final$Potassium_mmol_L, col=as.numeric(ind_swapped)+1)
+
+na = dat_all_final$Sodium_mmol_L[which(ind_swapped)]
+dat_all_final$Sodium_mmol_L[which(ind_swapped)] = dat_all_final$Potassium_mmol_L[which(ind_swapped)]
+dat_all_final$Potassium_mmol_L[which(ind_swapped)] = na
+
+dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L > 30)]=NA
+dat_all_final$Sodium_mmol_L[which(dat_all_final$Sodium_mmol_L < 75 | dat_all_final$Sodium_mmol_L > 200)]=NA
+
+dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L >= 9.9 & dat_all_final$STUDY=='AQUAMAT')]=NA
+dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L >= 9 & dat_all_final$STUDY=='Namazzi 2022')]=NA
+dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L >= 9 & dat_all_final$STUDY=='TRACT')]=NA
 
 
 source('hb_data_imputation.R')

@@ -26,11 +26,7 @@ library(naniar)
 
 
 ```{r load_data}
-sm_data = read_csv('Data/adam_out.csv')
-source('setup_parameters.R')
-sm_data = sm_data%>% arrange(STUDY) %>% 
-  mutate(Died_28D = ifelse(`Died within 28 days`=='Yes',1,0))
-table(sm_data$STUDY)
+load('RData/Analysis_dataset.RData')
 ```
 
 Visualise missing data
@@ -48,9 +44,14 @@ cols_check = c("SITEID","ARM","COUNTRY","SEX","Age","Died",
                "Anuria","GCS_tot","BCS_tot","para_ul","Malaria_RDT","PfHRP2_ng_ml",
                "Malaria_Positive","Glucose_mmol_L","Hb",
                "Lactate","Base Excess_mmol_L","Creatinine_umol_L",
-               "HCT","Leukocytes_10_9_L","Platelets_10_9_L",
+               "HCT","Leukocytes_10_9_L","Platelets_10_9_L","Potassium_mmol_L",
                "Urea Nitrogen_mmol_L",'pH_', 'Baseline_Creatinine','Baseline_Urea Nitrogen')
 vis_miss(sm_data %>% select(all_of(cols_check)),warn_large_data = F)
+
+vis_miss(sm_data %>% arrange(STUDY, SITEID) %>% select("Glucose_mmol_L","Hb",
+               "Lactate","Base Excess_mmol_L",Bicarbonate_mEq_L,'pH_',"Creatinine_umol_L",
+               "Potassium_mmol_L","Urea Nitrogen_mmol_L"),warn_large_data = F)
+
 ```
 
 
@@ -92,23 +93,6 @@ sm_data %>% filter(STUDY=='TRACT') %>%
 ```
 
 
-### Age, weight and height
-
-Remove some height and weight outliers
-
-```{r outliers_age_weight_height}
-ind_outliers = sm_data$Age==0 |
-  sm_data$Height_cm<48 |
-  sm_data$Height_cm<100 & sm_data$Weight_kg>40
-which(ind_outliers)
-plot(sm_data$Height_cm, sm_data$Weight_kg, col=as.numeric(ind_outliers)+1)
-plot(sm_data$Age, sm_data$Weight_kg, col=as.numeric(ind_outliers)+1)
-plot(sm_data$Age, sm_data$Height_cm, col=as.numeric(ind_outliers)+1)
-
-sm_data$Height_cm[sm_data$Height_cm<48]=NA
-sm_data$Height_cm[sm_data$Height_cm<100 & sm_data$Weight_kg>40]=NA
-sm_data$Age[sm_data$Age==0]=NA
-```
 
 
 
@@ -173,18 +157,7 @@ p3=sm_data %>% filter(!is.na(`Base Excess_mmol_L`), !is.na(Bicarbonate_mEq_L)) %
 grid.arrange(p1,p2,p3)
 ```
 
-Remove bicarbonate versus base excess outliers
 
-```{r}
-table(is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$`Base Excess_mmol_L`))
-table(!is.na(sm_data$Bicarbonate_mEq_L) & is.na(sm_data$`Base Excess_mmol_L`))
-table(!is.na(sm_data$Bicarbonate_mEq_L) | !is.na(sm_data$`Base Excess_mmol_L`))
-table(!is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$`Base Excess_mmol_L`))
-
-outliers_bicarb_baseexcess = which(sm_data$Bicarbonate_mEq_L-sm_data$`Base Excess_mmol_L`<15 | sm_data$Bicarbonate_mEq_L-sm_data$`Base Excess_mmol_L`>40)
-sm_data$Bicarbonate_mEq_L[outliers_bicarb_baseexcess]=NA
-sm_data$`Base Excess_mmol_L`[outliers_bicarb_baseexcess]=NA
-```
 
 
 
@@ -343,81 +316,6 @@ sm_data %>%
 
 
 
-## Make analysis dataset
-
-```{r make_analysis_data}
-#Remove AQ Gambia from analysis data-set as unreliable creatinine values
-sm_data = sm_data %>% 
-  mutate(INCLUDE_CC_ANALYSIS = !(
-    (is.na(Weight_kg) & is.na(Age) & is.na(Height_cm)) | # age, weight and height all missing
-      is.na(Malaria_Positive) | # no malaria confirmation
-      is.na(Died) | # no outcome
-      (is.na(Creatinine_umol_L) & is.na(BUN)) | # no creatinine or bun
-      is.na(Coma) | # no coma status
-      !Malaria_Positive |
-      STUDY=='AQ Gambia'),
-    
-    INCLUDE_CC_ANALYSIS_SENSITIVITY = # just core variables, don't exclude based on malaria confirmation or the AQ Gambia study
-      !(is.na(Weight_kg) |is.na(Age)) & # both age and weight missing
-      !is.na(Died) & # no outcome
-      (!is.na(Creatinine_umol_L) | !is.na(BUN)) & # no creatinine or bun
-      !is.na(Coma) )
-
-table(sm_data$INCLUDE_CC_ANALYSIS,useNA = 'ifany')
-
-table(sm_data$STUDY, sm_data$INCLUDE_CC_ANALYSIS)
-table(sm_data$STUDY, sm_data$Malaria_Positive,useNA = 'ifany')
-
-print(aggregate(Age ~ STUDY+INCLUDE_CC_ANALYSIS, data = sm_data, FUN = quantile))
-# print(aggregate(RFSTDTC ~ STUDY, data = sm_data, FUN = function(x) range(x,na.rm = T)))
-print(aggregate(Died ~ STUDY, data = sm_data, FUN = function(x) round(100*mean(x),1)))
-```
-
-
-
-Analysis data
-
-```{r analysis_data}
-xx = sm_data %>% filter(INCLUDE_CC_ANALYSIS)
-writeLines(sprintf('Analysis data: there are %s patients from %s studies with at least one baseline creatinine or BUN measurement. %s patients have creatinine; %s patients have BUN; %s patients have both.',
-                   nrow(xx),
-                   length(unique(xx$STUDYID)),
-                   sum(!is.na(xx$Creatinine_umol_L)),
-                   sum(!is.na(xx$BUN)),
-                   sum(!is.na(xx$Creatinine_umol_L) & !is.na(xx$BUN))
-))
-```
-
-reasons for exclusion
-
-```{r}
-sm_data = sm_data %>%
-  mutate(Reason_exclude = case_when(
-    INCLUDE_CC_ANALYSIS ~ NA,
-    !INCLUDE_CC_ANALYSIS & is.na(Creatinine_umol_L) & is.na(BUN) ~ 'No BUN or Creatinine measurement',
-    !INCLUDE_CC_ANALYSIS & (is.na(Malaria_Positive) | !Malaria_Positive) ~ 'No confirmed malaria',
-    !INCLUDE_CC_ANALYSIS & is.na(Died) ~ 'No mortality outcome',
-    !INCLUDE_CC_ANALYSIS & is.na(Weight_kg) & is.na(Age) ~ 'No weight/age',
-    !INCLUDE_CC_ANALYSIS & is.na(Coma) ~ 'No coma information',
-    !INCLUDE_CC_ANALYSIS & STUDY=='AQ Gambia' ~ 'AQ Gambia study',
-    T ~ 'weird!'
-  ))
-table(sm_data$Reason_exclude, sm_data$INCLUDE_CC_ANALYSIS, useNA = 'ifany')
-
-table(sm_data$Reason_exclude)
-```
-
-
-
-
-
-
-
-Save dataset for multiple imputation
-
-```{r}
-readr::write_csv(x = sm_data, file = 'Data/Analysis_data.csv')
-```
 
 
 

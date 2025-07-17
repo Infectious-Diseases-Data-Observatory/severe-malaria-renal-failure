@@ -61,7 +61,7 @@ if(!file.exists(f_path) | RUN_STAN_MODELS){
         data = sm_data_bun %>% filter(PfHRP2_ng_ml > 800),
         family = bernoulli(), cores = 4, seed = 17,
         iter = 2000, warmup = 1000, thin = 1, refresh = 250)
-
+  
   save(mod_bun_age_het,mod_bun_age_het2,mod_bun_age_het3, file = f_path)
 } else {
   load(f_path)
@@ -117,7 +117,7 @@ p1=test_data %>%
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+
   xlab('BUN (mmol/L)')+
   geom_hline(yintercept = mortality_threshold)+
-labs(colour='Age category')+
+  labs(colour='Age category')+
   theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
         legend.justification = c(0, 1))   # align legend's bottom-left to that point
 p1_threshold=test_data %>%
@@ -181,5 +181,74 @@ grid.arrange(p1, p1_threshold)
 ```
 
 
+
+## CRP and BUN/Creatinine
+
+```{r}
+sm_hrp2_platelets = sm_data_analysis %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Platelets_10_9_L)) %>%
+  mutate(PfHRP2_status = ifelse(PfHRP2_ng_ml>800, '>800', '<800'),
+         True_SM = PfHRP2_ng_ml>1000 & Platelets_10_9_L<150)
+table(sm_hrp2_platelets$STUDY)
+sm_hrp2_platelets %>% ggplot(aes(x=True_SM, y = BUN))+scale_y_log10()+geom_boxplot()
+sm_hrp2_platelets %>% ggplot(aes(x=True_SM, y = Creatinine_umol_L))+scale_y_log10()+geom_boxplot()
+
+sm_crp = sm_data_analysis %>% filter(!is.na(`C Reactive Protein_mg_L`), !is.na(BUN),
+                                     !is.na(PfHRP2_ng_ml), !is.na(Platelets_10_9_L)) %>%
+  mutate(PfHRP2_status = ifelse(PfHRP2_ng_ml>800, '>800', '<800'),
+         True_SM = PfHRP2_ng_ml>1000 & Platelets_10_9_L<150)
+
+mean(sm_crp$True_SM)
+table(True_SM=sm_crp$True_SM, low_CRP=sm_crp$`C Reactive Protein_mg_L`<100)
+
+roc_obj <- pROC::roc(sm_crp$True_SM, sm_crp$`C Reactive Protein_mg_L`,)
+
+# Plot the ROC curve
+plot(roc_obj, col = "blue", lwd = 2, main = "ROC Curve")
+
+sm_crp %>% ggplot(aes(x=`C Reactive Protein_mg_L`+1, y = BUN, colour = PfHRP2_status))+
+  geom_point()+scale_x_log10(minor_breaks=minor_breaks)+scale_y_log10(minor_breaks=minor_breaks)+
+  theme_bw(base_size = 13)+
+  labs(color='Plasma PfHRP2')+geom_smooth()
+
+p1=sm_crp %>% ggplot(aes(x=`C Reactive Protein_mg_L`+10, y = PfHRP2_ng_ml+10, colour = True_SM))+
+  geom_point()+scale_x_log10(minor_breaks=minor_breaks)+scale_y_log10(minor_breaks=minor_breaks)+
+  theme_bw(base_size = 13)+xlab('CRP (mg/L)')+ylab('Plasma PfHRP2 (ng/ml)')
+
+p2=sm_crp %>% ggplot(aes(x=`C Reactive Protein_mg_L`+10, y = Platelets_10_9_L, colour = True_SM))+
+  geom_point()+scale_x_log10(minor_breaks=minor_breaks)+scale_y_log10(minor_breaks=minor_breaks)+
+  theme_bw(base_size = 13)+xlab('CRP (mg/L)')+ylab('Platelet count (x10^6/L)')
+grid.arrange(p1,p2)
+
+
+sm_hrp2 = sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Coma)) %>% 
+  mutate(STUDY = as.factor(STUDY),
+         Coma = ifelse(Coma==1, 'Yes','No'))
+table(sm_hrp2$STUDY)
+mod_hrp2 = mgcv::gam(Died ~ s(log10(PfHRP2_ng_ml+10)), family = 'binomial', data = sm_hrp2)
+
+mod_hrp2_formula=
+  as.formula(bf(Died_28D ~ s(log10(PfHRP2_ng_ml+10))+
+                  Coma+(1|STUDY)))
+
+mod_hrp2 = brms::brm(mod_hrp2_formula, data = sm_hrp2,
+                     family = bernoulli(), cores = 4, seed = 17,
+                     iter = 1000, warmup = 500, thin = 1, refresh = 250)
+
+test_data = expand.grid(PfHRP2_ng_ml = 10^(seq(1,5,length.out=50)), STUDY = -1, Coma=c('Yes','No'))
+preds = posterior_epred(mod_hrp2, newdata = test_data, re_formula = NA)
+test_data$Mortality_predicted = colMeans(preds)
+p1 = sm_hrp2 %>% ggplot(aes(x=PfHRP2_ng_ml+10))+geom_histogram()+
+  scale_x_log10(minor_breaks=minor_breaks,limits=c(10,10^5))+
+  theme_bw()+xlab('Plasma PfHRP2 (ng/ml)')
+p2 = test_data %>% 
+  ggplot(aes(x=PfHRP2_ng_ml, y = Mortality_predicted, colour = Coma))+
+  geom_line()+
+  scale_x_log10(minor_breaks=minor_breaks,limits=c(10,10^5))+ylim(0, 0.5)+
+  theme_bw()+xlab('Plasma PfHRP2 (ng/ml)')+
+   theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
+        legend.justification = c(0, 1))   # align legend's bottom-left to that point
+
+grid.arrange(p1,p2, nrow=2)
+```
 
 

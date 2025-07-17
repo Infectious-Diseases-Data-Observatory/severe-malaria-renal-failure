@@ -12,19 +12,19 @@ library(ranger)
 
 
 RUN_IMPUTE_MODEL = T
-sm_data = readr::read_csv('Data/Analysis_data.csv')
+load('RData/data_for_imputation.RData')
 key_cols=c("STUDY","SEX","Age","Died",'Mid-Upper Arm Circumference_cm',
            "Weight_kg","Hb", "Lactate","Height_cm",'Anemia',
-           "Base Excess_mmol_L","Bicarbonate_mEq_L",
-           "Creatinine_umol_L","BUN", 'Creat_BUN_ratio', 
+           "Base Excess_mmol_L","Bicarbonate_mEq_L",'Potassium_mmol_L',
+           "Creatinine_umol_L","BUN", 'Creat_BUN_ratio',
            'Seizure', 'Coma')
 p1=vis_miss(sm_data %>% select(all_of(key_cols)), sort_miss = T)
 p1
-p2=vis_miss(sm_data %>% dplyr::filter(INCLUDE_CC_ANALYSIS) %>% 
+p2=vis_miss(sm_data %>% dplyr::filter(INCLUDE_CC_ANALYSIS) %>%
               select(all_of(key_cols)), sort_miss = T)
 p2
-ggsave(filename = 'Missing_key_data.pdf', plot = p1)
-ggsave(filename = 'Missing_key_data_analysis_pop.pdf', plot = p2)
+# ggsave(filename = 'Missing_key_data.pdf', plot = p1)
+# ggsave(filename = 'Missing_key_data_analysis_pop.pdf', plot = p2)
 
 sm_data = sm_data[, key_cols ] %>%
   mutate(across(c(STUDY,SEX,Anemia,Died), as.factor),
@@ -44,9 +44,9 @@ gridExtra::grid.arrange(p1,p2,p3,p4)
 
 colnames(sm_data)
 set.seed(946)
-imp_list = mice(sm_data, m = 1,  printFlag = T, maxit = 15,
+imp_list = mice(sm_data, m = 5,  printFlag = T, maxit = 15,
                 method = c("","","rf","","rf","rf","rf","rf","rf","rf",
-                           "rf","rf",'rf','rf','rf',"rf","rf"))
+                           "rf","rf","rf",'rf','rf','rf',"rf","rf"))
 xx = complete(imp_list,action = 1)
 numeric_df <- xx %>% select(where(is.numeric))
 p1=xx %>% ggplot(aes(x=Age, y = Height_cm, colour = STUDY))+geom_point()+geom_smooth(aes(group=NA))
@@ -54,6 +54,9 @@ p2=xx %>% ggplot(aes(x=Age, y = `Mid-Upper Arm Circumference_cm`, colour = STUDY
 p3=xx %>% ggplot(aes(x=Hb, y = Lactate, colour = STUDY))+geom_point()+geom_smooth(aes(group=NA))
 p4=xx %>% ggplot(aes(x=Age, y = Hb, colour = STUDY))+geom_point()+geom_smooth(aes(group=NA))
 gridExtra::grid.arrange(p1,p2,p3,p4)
+
+xx %>% ggplot(aes(x=Potassium_mmol_L, y = log10_BUN, colour = STUDY))+
+  geom_point()+geom_smooth(aes(group=NA))
 
 # MUAC imputation does not work for adults!!!
 # Lactate imputation has some serious problems (use of linear regression)
