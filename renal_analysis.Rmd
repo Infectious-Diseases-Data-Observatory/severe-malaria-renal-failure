@@ -478,6 +478,49 @@ sm_dat_bun %>% filter(Coma=='No', STUDY!='TRACT')%>%
   facet_wrap(~Age_category)
 ```
 
+## Proportion base excess explained
+
+```{r}
+sm_data_analysis$BaseExcess=sm_data_analysis$`Base Excess_mmol_L`
+mod_BE = mgcv::gam(BaseExcess ~ s(Bicarbonate_mEq_L), data=sm_data_analysis)
+
+sm_data_acidosis = sm_data_analysis %>%
+  filter(!is.na(BaseExcess) | !is.na(Bicarbonate_mEq_L),
+         !is.na(Creatinine_umol_L),
+         !is.na(Lactate), 
+         !is.na(Hb)) %>%
+  mutate(
+    BaseExcess = ifelse(!is.na(BaseExcess)&BaseExcess>10,NA, BaseExcess),
+    BaseExcess_pred = ifelse(!is.na(Bicarbonate_mEq_L),
+                             predict(mod_BE, newdata = data.frame(Bicarbonate_mEq_L=Bicarbonate_mEq_L)),
+                             NA),
+    Q = 0.0270*Age + 0.2329,
+    bSrc_adults = 88.4*((140-Age)*Weight_kg)/(100*72),
+    bSrc_children = (107.3/120)*Q*88.4,
+    bSrc = ifelse(Age<15, bSrc_children, bSrc_adults),
+    Creatinine_FC_log2 = log2(Creatinine_umol_L/bSrc))
+nrow(sm_data_acidosis)
+
+mod1=lme4::lmer(BaseExcess ~ Creatinine_FC_log2 * Lactate + (Hb<5) + Age_category + (1|STUDY), data= sm_data_acidosis)
+summary(mod1)
+r.squaredGLMM(mod1)
+
+p1=sm_data_acidosis %>% ggplot(aes(x=Creatinine_FC_log2, y=BaseExcess, colour = Hb<5))+
+  geom_point(alpha=.6)+theme_bw()+geom_smooth(method=lm,se = F)+
+  xlab('Creatinine fold change from baseline')+ylab('Base Excess (mmol/L)')+
+  theme(legend.position = c(.8,.8))
+
+p2=sm_data_acidosis %>% ggplot(aes(x=Creatinine_FC_log2, y=Lactate, colour = Hb<5))+
+  geom_point(alpha=.6)+theme_bw()+geom_smooth(method=lm,se = F)+
+  xlab('Creatinine fold change from baseline')+ylab('Lactate (mmol/L)')+
+   theme(legend.position = 'none')
+
+p3=sm_data_acidosis %>% ggplot(aes(x=Lactate, y=BaseExcess, colour = Hb<5))+
+  geom_point(alpha=.6)+theme_bw()+geom_smooth(method=lm,se = F)+
+  xlab('Lactate (mmol/L)')+ylab('Base Excess (mmol/L)')+
+   theme(legend.position = 'none')
+grid.arrange(p1,p2,p3)
+```
 
 
 
