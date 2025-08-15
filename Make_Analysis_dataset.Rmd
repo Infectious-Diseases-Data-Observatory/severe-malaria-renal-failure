@@ -11,6 +11,7 @@ knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
                       fig.width = 8, fig.height = 8,
                       fig.pos = 'H',dev = 'png', dpi = 300)
 library(zscorer)
+library(tidyverse)
 ```
 
 
@@ -19,9 +20,88 @@ library(zscorer)
 # source('make_adam.R')
 ```
 
+
+
 ```{r render_descriptive_prep, echo=F}
 # rmarkdown::render('descriptive_analysis_prep.Rmd')
 ```
+
+
+## Make analysis dataset
+
+Load data
+
+```{r}
+sm_data = readr::read_csv('Data/adam_out.csv')
+
+sm_data = sm_data%>% arrange(STUDY) %>% 
+  mutate(Died_28D = ifelse(`Died within 28 days`=='Yes',1,0))
+```
+
+```{r make_analysis_data}
+#Remove AQ Gambia from analysis data-set as unreliable creatinine values
+sm_data = sm_data %>% 
+  mutate(INCLUDE_CC_ANALYSIS = !(
+    (is.na(Weight_kg) & is.na(Age) & is.na(Height_cm)) | # age, weight and height all missing
+      is.na(Malaria_Positive) | # no malaria confirmation
+      is.na(Died) | # no outcome
+      (is.na(Creatinine_umol_L) & is.na(BUN)) | # no creatinine or bun
+      is.na(Coma) | # no coma status
+      !Malaria_Positive |
+      STUDY=='AQ Gambia'),
+    
+    INCLUDE_CC_ANALYSIS_SENSITIVITY = # just core variables, don't exclude based on malaria confirmation or the AQ Gambia study
+      !(is.na(Weight_kg) |is.na(Age)) & # both age and weight missing
+      !is.na(Died) & # no outcome
+      (!is.na(Creatinine_umol_L) | !is.na(BUN)) & # no creatinine or bun
+      !is.na(Coma) )
+
+table(sm_data$INCLUDE_CC_ANALYSIS,useNA = 'ifany')
+
+table(sm_data$STUDY, sm_data$INCLUDE_CC_ANALYSIS)
+table(sm_data$STUDY, sm_data$Malaria_Positive,useNA = 'ifany')
+
+print(aggregate(Age ~ STUDY+INCLUDE_CC_ANALYSIS, data = sm_data, FUN = quantile))
+# print(aggregate(RFSTDTC ~ STUDY, data = sm_data, FUN = function(x) range(x,na.rm = T)))
+print(aggregate(Died ~ STUDY, data = sm_data, FUN = function(x) round(100*mean(x),1)))
+```
+
+
+
+Analysis data
+
+```{r analysis_data}
+xx = sm_data %>% filter(INCLUDE_CC_ANALYSIS)
+writeLines(sprintf('Analysis data: there are %s patients from %s studies with at least one baseline creatinine or BUN measurement. %s patients have creatinine; %s patients have BUN; %s patients have both.',
+                   nrow(xx),
+                   length(unique(xx$STUDYID)),
+                   sum(!is.na(xx$Creatinine_umol_L)),
+                   sum(!is.na(xx$BUN)),
+                   sum(!is.na(xx$Creatinine_umol_L) & !is.na(xx$BUN))
+))
+```
+
+reasons for exclusion
+
+```{r}
+sm_data = sm_data %>%
+  mutate(Reason_exclude = case_when(
+    INCLUDE_CC_ANALYSIS ~ NA,
+    !INCLUDE_CC_ANALYSIS & STUDY=='AQ Gambia' ~ 'AQ Gambia study',
+    !INCLUDE_CC_ANALYSIS & is.na(Creatinine_umol_L) & is.na(BUN) ~ 'No BUN or Creatinine measurement',
+    !INCLUDE_CC_ANALYSIS & (is.na(Malaria_Positive) | !Malaria_Positive) ~ 'No confirmed malaria',
+    !INCLUDE_CC_ANALYSIS & is.na(Died) ~ 'No mortality outcome',
+    !INCLUDE_CC_ANALYSIS & is.na(Weight_kg) & is.na(Age) ~ 'No weight/age',
+    !INCLUDE_CC_ANALYSIS & is.na(Coma) ~ 'No coma information',
+    T ~ 'weird!'
+  ))
+table(sm_data$Reason_exclude, sm_data$INCLUDE_CC_ANALYSIS, useNA = 'ifany')
+
+table(sm_data$Reason_exclude)
+
+table(sm_data$STUDY,sm_data$Reason_exclude)
+```
+
 
 
 ## Multiple imputation of core variables

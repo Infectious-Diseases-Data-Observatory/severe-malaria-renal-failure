@@ -508,3 +508,26 @@ summary(mod_both)
 fixef(mod_both)
 ```
 
+
+
+
+
+### Interactions?
+
+```{r}
+mod=glmer(Died_28D ~ Coma*(BUN>10) + (1|STUDY), family='binomial',
+          data= sm_data_analysis %>% filter(Continent=='AFRICA'))
+summary(mod)
+
+sm_data_creat$Creatinine_fold_change = sm_data_analysis %>% mutate(Creatine_FC = Creatinine_umol_L/Baseline_Creatinine)
+mod=glmer(Died_28D ~ Coma*(Creatinine_fold_change>1.5) + (1|STUDY), family='binomial',
+          data= sm_data_analysis %>% filter(Continent=='AFRICA'))
+summary(mod)
+
+namazzi = sm_data %>% filter(STUDY=='Namazzi 2022')
+mod=glm(Died_28D ~ Coma*(BUN>10), family='binomial', data= namazzi)
+summary(mod)
+
+mod=glm(Died_28D ~ Coma*Creatinine_umol_L, family='binomial', data= namazzi)
+summary(mod)
+```

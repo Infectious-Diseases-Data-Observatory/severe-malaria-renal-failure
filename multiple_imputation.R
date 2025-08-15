@@ -12,7 +12,7 @@ library(ranger)
 
 
 RUN_IMPUTE_MODEL = T
-load('RData/data_for_imputation.RData')
+sm_data = readr::read_csv('Data/adam_out.csv')
 key_cols=c("STUDY","SEX","Age","Died",'Mid-Upper Arm Circumference_cm',
            "Weight_kg","Hb", "Lactate","Height_cm",'Anemia',
            "Base Excess_mmol_L","Bicarbonate_mEq_L",'Potassium_mmol_L',

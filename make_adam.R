@@ -417,12 +417,12 @@ dat_all_final = dat_all%>%
       STUDYID=='MOLFZ' ~ 'KEMRI',
       STUDYID=='ITYCK' ~ 'Dong Nai',
       STUDYID=='FSOUE' ~ 'Namazzi 2022',
-      STUDYID=='NLSSA' ~ 'Lima-Cooper 2024',
+      STUDYID=='NLSSA' ~ 'Conroy 2019',
       T ~ STUDYID
     )
   )
 table(dat_all_final$STUDY)
-dat_all_final = dat_all_final[permute::shuffle(nrow(dat_all_final)), ]
+# dat_all_final = dat_all_final[permute::shuffle(nrow(dat_all_final)), ]
 
 table(dat_all_final$STUDY, dat_all_final$COUNTRY)
 

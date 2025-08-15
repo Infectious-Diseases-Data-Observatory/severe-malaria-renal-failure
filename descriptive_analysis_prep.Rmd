@@ -5,11 +5,17 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-```{r setup2, include=FALSE}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
+                      echo = F, include = TRUE, 
+                      fig.width = 8, fig.height = 8,
+                      fig.pos = 'H',dev = 'png', dpi = 300)
+
 
 library(tidygam)
 library(mgcv)
 library(brms)
+library(conflicted)
 library(tidyverse)
 library(readr)
 library(rtables)
@@ -17,17 +23,52 @@ library(RColorBrewer)
 library(grid)
 library(gridExtra)
 library(naniar)
-library(grf)
+library(scales)
+
+#library(worlddatr)
+
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(brms::ar)
+conflicts_prefer(dplyr::collapse)
+conflicts_prefer(dplyr::combine)
+conflicts_prefer(tidyr::extract)
+conflicts_prefer(dplyr::lag)
+conflicts_prefer(brms::s)
+conflicts_prefer(purrr::set_names)
+conflicts_prefer(brms::t2)
+conflicts_prefer(dplyr::group_rows)
+
+binomial_smooth <- function(...) {
+  geom_smooth(method = "gam", method.args = list(family = "binomial"), ...)
+}
 ```
 
 
+
+Plotting params
+
+```{r}
+sqrt_breaks = c(1,4,9,16,25,36,50,64,81)
+breaks <- 10^(-10:10)
+minor_breaks <- rep(1:9, 21)*(10^rep(-10:10, each=9))
+
+SEsmooth=F
+my_alpha=0.2
+bun_limits = c(1,100)
+crea_limits = c(10,1000)
+
+mortality_threshold = 0.05
+```
 
 
 ## Load data
 
 
 ```{r load_data}
-load('RData/Analysis_dataset.RData')
+sm_data = read_csv('Data/adam_out.csv')
+sm_data = sm_data%>% arrange(STUDY) %>% 
+  mutate(Died_28D = ifelse(`Died within 28 days`=='Yes',1,0))
+table(sm_data$STUDY)
 ```
 
 Visualise missing data
@@ -39,20 +80,15 @@ cols_check = c("SITEID","ARM","COUNTRY","SEX","Age","Died",
                "Respiratory Rate_breaths_min",
                "Systolic Blood Pressure_mmHg","Temperature_C",
                "Weight_kg","Oxygen Saturation_%","Diastolic Blood Pressure_mmHg",
-               "Coma","Respiratory distress","Shock",
+               "Coma_Final","Respiratory distress","Shock",
                "Hypoglycaemia","Seizure","Jaundice",
                "Blood in urine","Anemia","Hyperparasitaemia",
                "Anuria","GCS_tot","BCS_tot","para_ul","Malaria_RDT","PfHRP2_ng_ml",
                "Malaria_Positive","Glucose_mmol_L","Hb",
                "Lactate","Base Excess_mmol_L","Creatinine_umol_L",
-               "HCT","Leukocytes_10_9_L","Platelets_10_9_L","Potassium_mmol_L",
+               "HCT","Leukocytes_10_9_L","Platelets_10_9_L",
                "Urea Nitrogen_mmol_L",'pH_', 'Baseline_Creatinine','Baseline_Urea Nitrogen')
 vis_miss(sm_data %>% select(all_of(cols_check)),warn_large_data = F)
-
-vis_miss(sm_data %>% arrange(STUDY, SITEID) %>% select("Glucose_mmol_L","Hb",
-                                                       "Lactate","Base Excess_mmol_L",Bicarbonate_mEq_L,'pH_',"Creatinine_umol_L",
-                                                       "Potassium_mmol_L","Urea Nitrogen_mmol_L"),warn_large_data = F)
-
 ```
 
 
@@ -94,6 +130,23 @@ sm_data %>% filter(STUDY=='TRACT') %>%
 ```
 
 
+### Age, weight and height
+
+Remove some height and weight outliers
+
+```{r outliers_age_weight_height}
+ind_outliers = sm_data$Age==0 |
+  sm_data$Height_cm<48 |
+  sm_data$Height_cm<100 & sm_data$Weight_kg>40
+which(ind_outliers)
+plot(sm_data$Height_cm, sm_data$Weight_kg, col=as.numeric(ind_outliers)+1)
+plot(sm_data$Age, sm_data$Weight_kg, col=as.numeric(ind_outliers)+1)
+plot(sm_data$Age, sm_data$Height_cm, col=as.numeric(ind_outliers)+1)
+
+sm_data$Height_cm[sm_data$Height_cm<48]=NA
+sm_data$Height_cm[sm_data$Height_cm<100 & sm_data$Weight_kg>40]=NA
+sm_data$Age[sm_data$Age==0]=NA
+```
 
 
 
@@ -158,7 +211,18 @@ p3=sm_data %>% filter(!is.na(`Base Excess_mmol_L`), !is.na(Bicarbonate_mEq_L)) %
 grid.arrange(p1,p2,p3)
 ```
 
+Remove bicarbonate versus base excess outliers
 
+```{r}
+table(is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$`Base Excess_mmol_L`))
+table(!is.na(sm_data$Bicarbonate_mEq_L) & is.na(sm_data$`Base Excess_mmol_L`))
+table(!is.na(sm_data$Bicarbonate_mEq_L) | !is.na(sm_data$`Base Excess_mmol_L`))
+table(!is.na(sm_data$Bicarbonate_mEq_L) & !is.na(sm_data$`Base Excess_mmol_L`))
+
+outliers_bicarb_baseexcess = which(sm_data$Bicarbonate_mEq_L-sm_data$`Base Excess_mmol_L`<15 | sm_data$Bicarbonate_mEq_L-sm_data$`Base Excess_mmol_L`>40)
+sm_data$Bicarbonate_mEq_L[outliers_bicarb_baseexcess]=NA
+sm_data$`Base Excess_mmol_L`[outliers_bicarb_baseexcess]=NA
+```
 
 
 
@@ -317,47 +381,110 @@ sm_data %>%
 
 
 
+## Make analysis dataset
 
-# GRF model
+```{r make_analysis_data}
+#Remove AQ Gambia from analysis data-set as unreliable creatinine values
+sm_data = sm_data %>% 
+  mutate(INCLUDE_CC_ANALYSIS = !(
+    (is.na(Weight_kg) & is.na(Age) & is.na(Height_cm)) | # age, weight and height all missing
+      is.na(Malaria_Positive) | # no malaria confirmation
+      is.na(Died) | # no outcome
+      (is.na(Creatinine_umol_L) & is.na(BUN)) | # no creatinine or bun
+      is.na(Coma_Final) | # no coma status
+      !Malaria_Positive |
+      STUDY=='AQ Gambia'),
+    
+    INCLUDE_CC_ANALYSIS_SENSITIVITY = # just core variables, don't exclude based on malaria confirmation or the AQ Gambia study
+      !(is.na(Weight_kg) |is.na(Age)) & # both age and weight missing
+      !is.na(Died) & # no outcome
+      (!is.na(Creatinine_umol_L) | !is.na(BUN)) & # no creatinine or bun
+      !is.na(Coma_Final) )
+
+table(sm_data$INCLUDE_CC_ANALYSIS,useNA = 'ifany')
+
+table(sm_data$STUDY, sm_data$INCLUDE_CC_ANALYSIS)
+table(sm_data$STUDY, sm_data$Malaria_Positive,useNA = 'ifany')
+
+print(aggregate(Age ~ STUDY+INCLUDE_CC_ANALYSIS, data = sm_data, FUN = quantile))
+# print(aggregate(RFSTDTC ~ STUDY, data = sm_data, FUN = function(x) range(x,na.rm = T)))
+print(aggregate(Died ~ STUDY, data = sm_data, FUN = function(x) round(100*mean(x),1)))
+```
+
+
+
+Analysis data
+
+```{r analysis_data}
+xx = sm_data %>% filter(INCLUDE_CC_ANALYSIS)
+writeLines(sprintf('Analysis data: there are %s patients from %s studies with at least one baseline creatinine or BUN measurement. %s patients have creatinine; %s patients have BUN; %s patients have both.',
+                   nrow(xx),
+                   length(unique(xx$STUDYID)),
+                   sum(!is.na(xx$Creatinine_umol_L)),
+                   sum(!is.na(xx$BUN)),
+                   sum(!is.na(xx$Creatinine_umol_L) & !is.na(xx$BUN))
+))
+```
+
+reasons for exclusion
 
 ```{r}
-cols_important = c('Age','Respiratory distress',
-              'Respiratory Rate_breaths_min',
-              'Coma','Hypoglycaemia','Glucose_mmol_L',
-              'BUN','Hb','Jaundice',
-              'Systolic Blood Pressure_mmHg',
-              'Bicarbonate_mEq_L','Base Excess_mmol_L','pH_','Lactate')
-naniar::vis_miss(sm_data_analysis %>% select(all_of(cols_important)))
-cols_pred = c('Age','Respiratory distress',
-              'Respiratory Rate_breaths_min',
-              'Coma','Hypoglycaemia','Glucose_mmol_L',
-              'BUN','Hb','Jaundice',
-              'Systolic Blood Pressure_mmHg',
-              'Bicarbonate_mEq_L','Base Excess_mmol_L','pH_')
-sm_data_pred = sm_data_analysis %>% 
-  filter(if_all(all_of(cols_pred), ~ !is.na(.))) %>%
-  mutate(`Died within 28 days` = as.factor(`Died within 28 days`))
-sm_data_pred=droplevels(sm_data_pred)
-cols_rm = apply(sm_data_pred, 2, function(x) mean(is.na(x))>.5)
-sm_data_pred = sm_data_pred[, !cols_rm]
-naniar::vis_miss(sm_data_pred,warn_large_data = F)
-X1 = model.matrix(as.formula(~.-1),data = sm_data_pred%>%
-                    select(all_of(cols_pred)))
-grf_mod = grf::probability_forest(X = X1, Y = sm_data_pred$`Died within 28 days`)
-var_imp = variable_importance(grf_mod)
-rownames(var_imp)=colnames(X1)
-var_imp
+sm_data = sm_data %>%
+  mutate(Reason_exclude = case_when(
+    INCLUDE_CC_ANALYSIS ~ NA,
+    !INCLUDE_CC_ANALYSIS & STUDY=='AQ Gambia' ~ 'AQ Gambia study',
+    !INCLUDE_CC_ANALYSIS & is.na(Creatinine_umol_L) & is.na(BUN) ~ 'No BUN or Creatinine measurement',
+    !INCLUDE_CC_ANALYSIS & (is.na(Malaria_Positive) | !Malaria_Positive) ~ 'No confirmed malaria',
+    !INCLUDE_CC_ANALYSIS & is.na(Died) ~ 'No mortality outcome',
+    !INCLUDE_CC_ANALYSIS & is.na(Weight_kg) & is.na(Age) ~ 'No weight/age',
+    !INCLUDE_CC_ANALYSIS & is.na(Coma_Final) ~ 'No coma information',
+    T ~ 'weird!'
+  ))
+table(sm_data$Reason_exclude, sm_data$INCLUDE_CC_ANALYSIS, useNA = 'ifany')
 
-sm_data_pred$Prob_death_grf=predict(grf_mod)$predictions[,'Yes']*1000
-range(sm_data_pred$Prob_death_grf)
+table(sm_data$Reason_exclude)
+```
 
-sm_data_pred %>% filter(Prob_death_grf>=1) %>%
-  ggplot(aes(x=BUN, y = Prob_death_grf, color=as.factor(Coma)))+
-  geom_point(alpha=.2)+
-  geom_smooth(aes(y = Prob_death_grf, linetype = as.factor(Coma)), color = "black", linewidth = .5,se = F)+
-  theme_bw()+scale_x_log10()+scale_y_log10()+
-  geom_hline(yintercept =50)+facet_wrap(~STUDY)
 
+Plasma HRP2
+```{r PfHRP2_BUN_Creatinine, fig.width=12, fig.height=8}
+library(quantreg)
+p1=sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Creatinine_umol_L)) %>%
+  ggplot(aes(x=PfHRP2_ng_ml+1, y = Creatinine_umol_L, colour = STUDY))+
+  geom_jitter(width = .05,height = .01,alpha=0.5)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  theme_minimal(base_size = 14)+geom_smooth(se = F, aes(group=NA))+
+  geom_smooth(method = "rq", method.args = list(tau = 0.9), se = FALSE, color = "black",linetype = 2)+
+  xlab('Plasma PfHRP2 (ng/ml)')+ylab('Creatinine (umol/L)')
+p2=sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(BUN)) %>%
+  ggplot(aes(x=PfHRP2_ng_ml+1, y = BUN, colour = STUDY))+
+  geom_jitter(width = .05,height = .01,alpha=0.5)+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks,
+                labels = trans_format("log10", math_format(10^.x)))+
+  theme_minimal(base_size = 14)+geom_smooth(se = F, aes(group=NA))+
+  geom_smooth(method = "rq", method.args = list(tau = 0.9), se = FALSE, color = "black",linetype = 2)+
+  xlab('Plasma PfHRP2 (ng/ml)')+ylab('Urea Nitrogen (mmol/L)')
+grid.arrange(p1,p2,nrow=1)
+
+writeLines(sprintf('There are %s patients with plasma hrp2 and creatinine measured',
+                   nrow( sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Creatinine_umol_L)) )))
+
+writeLines(sprintf('There are %s patients with plasma hrp2 and BUN measured',
+                   nrow( sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(BUN)) )))
+```
+
+
+
+
+Save dataset for multiple imputation
+
+```{r}
+readr::write_csv(x = sm_data, file = 'Data/Analysis_data.csv')
 ```
 
 
