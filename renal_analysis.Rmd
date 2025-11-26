@@ -329,6 +329,95 @@ sm_data_analysis%>%
 ```
 
 
+## Hyperkalaemia
+
+```{r bun_hyperkalaemia, fig.width=9, fig.height=7}
+sm_data_analysis$STUDY=as.factor(sm_data_analysis$STUDY)
+xx=sm_data_analysis %>% filter(!is.na(Potassium_mmol_L), !is.na(BUN), Potassium_mmol_L<12)
+xx1 = xx %>% filter(Age<15, BUN>3, BUN<50) %>% droplevels()%>%
+  mutate(HP = as.numeric(Potassium_mmol_L>8)) 
+
+xx %>% ggplot(aes(x=BUN, y=Potassium_mmol_L, color=STUDY))+  
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
+  geom_point(alpha=.3)+ theme_bw(base_size = 15)+
+  ggtitle(paste('n=',nrow(xx)))+
+  xlab('Blood urea nitrogen (mmol/L)')+
+  ylab('Potassium (mmol/L)')+geom_smooth(se = F)
+
+writeLines(sprintf('In a combined database of %s children <15 years with severe malaria hypokalaemia (K+<3.5 mmol/L) was found on admission in %s%%, and high blood potassium level (K+>5.5 mmol/L) were found in %s%%. Very high values (>9mmol/L, %s%%) were unrelated to acidosis or renal impairment and were most likely spurious resulting from blood sample haemolysis). Otherwise hyperkalaemia correlated with metabolic acidosis and elevated blood urea.',
+                   nrow(xx1), 
+                   round(100*mean(xx1$Potassium_mmol_L<3.5),1),
+                   round(100*mean(xx1$Potassium_mmol_L>5.5),1),
+                   round(100*mean(xx1$Potassium_mmol_L>9),1)))
+mod = mgcv::gam(as.numeric(Potassium_mmol_L>8) ~ s(log10(BUN), k=5) + STUDY,
+                  data = xx1, family = 'binomial')
+summary(mod)
+
+table(xx1$STUDY)
+xx %>% ggplot(aes(x=BUN, y=Potassium_mmol_L, color=Age_category))+  
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
+  geom_point(alpha=.3)+ theme_bw(base_size = 15)+
+  labs(colour="Age category")+ggtitle(paste('n=',nrow(xx)))+
+  xlab('Blood urea nitrogen (mmol/L)')+
+  ylab('Potassium (mmol/L)')+geom_smooth(se = F)+
+  scale_color_manual(
+    values = c(
+      "≤2"     = "lightblue",
+      "(2,5]"  = "lightgreen",
+      "(5,15]" = "purple",
+      ">15"    = "darkblue"   # adults
+    ),
+    breaks = levels(xx$Age_category),
+    drop = FALSE
+  ) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1)))
+
+
+
+xx=sm_data_analysis %>% filter(!is.na(`Base Excess_mmol_L`), !is.na(BUN)) 
+table(xx$STUDY)
+xx%>%ggplot(aes(x=BUN, y=`Base Excess_mmol_L`, color=Age_category))+  
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks) +
+  geom_point(alpha=.3)+ theme_bw(base_size = 15)+
+  labs(colour="Age category")+ggtitle(paste('n=',nrow(xx)))+
+  xlab('Blood urea nitrogen (mmol/L)')+
+  ylab('Base excess (mmol/L)')+geom_smooth(se = F)
+
+xx=sm_data_analysis %>% filter(!is.na(Potassium_mmol_L),Potassium_mmol_L<12,!is.na(Lactate)) 
+table(xx$STUDY)
+xx %>% ggplot(aes(x=Lactate, y=Potassium_mmol_L, color=Age_category))+  
+  geom_point(alpha=.3)+ theme_bw(base_size = 15)+
+  labs(colour="Age category")+ggtitle(paste('n=',nrow(xx)))+
+  xlab('Lactate (mmol/L)')+
+  ylab('Potassium (mmol/L)')+geom_smooth(se = F)
+
+xx =sm_data_analysis %>% filter(!is.na(Potassium_mmol_L), Potassium_mmol_L<12, !is.na(`Base Excess_mmol_L`), `Base Excess_mmol_L`<10) 
+table(xx$STUDY)
+xx %>% ggplot(aes(x=`Base Excess_mmol_L`, y=Potassium_mmol_L, color=Age_category))+  
+  geom_point(alpha=.3)+ theme_bw(base_size = 15)+
+  labs(colour="Age category")+ggtitle(paste('n=',nrow(xx)))+
+  xlab('Base excess (mmol/L)')+
+  ylab('Potassium (mmol/L)')+geom_smooth(se = F)
+
+xx =sm_data_analysis %>% filter(!is.na(Lactate), !is.na(`Base Excess_mmol_L`), `Base Excess_mmol_L`<10) 
+table(xx$STUDY)
+xx %>% ggplot(aes(x=`Base Excess_mmol_L`, y=Lactate, color=Age_category))+  
+  geom_point(alpha=.3)+ theme_bw(base_size = 15)+
+  labs(colour="Age category")+ggtitle(paste('n=',nrow(xx)))+
+  xlab('Base excess (mmol/L)')+
+  ylab('Lactate (mmol/L)')+geom_smooth(se = F)
+
+xx = sm_data_analysis %>% filter(!is.na(Sodium_mmol_L), !is.na(Potassium_mmol_L), Potassium_mmol_L<12, Sodium_mmol_L>100) 
+table(xx$STUDY)
+xx %>% ggplot(aes(x=Sodium_mmol_L, y=Potassium_mmol_L, color=Age_category))+  
+  geom_point()+ theme_bw(base_size = 15)+
+  labs(colour="Age category")+ggtitle(paste('n=',nrow(xx)))+
+  xlab('Sodium (mmol/L)')+
+  ylab('Potassium (mmol/L)')+geom_smooth(se = F)
+```
+
+
+
 ## Mortality
 
 ### Bin BUN and Creatinine
@@ -513,12 +602,12 @@ p1=sm_data_acidosis %>% ggplot(aes(x=Creatinine_FC_log2, y=BaseExcess, colour = 
 p2=sm_data_acidosis %>% ggplot(aes(x=Creatinine_FC_log2, y=Lactate, colour = Hb<5))+
   geom_point(alpha=.6)+theme_bw()+geom_smooth(method=lm,se = F)+
   xlab('Creatinine fold change from baseline')+ylab('Lactate (mmol/L)')+
-   theme(legend.position = 'none')
+  theme(legend.position = 'none')
 
 p3=sm_data_acidosis %>% ggplot(aes(x=Lactate, y=BaseExcess, colour = Hb<5))+
   geom_point(alpha=.6)+theme_bw()+geom_smooth(method=lm,se = F)+
   xlab('Lactate (mmol/L)')+ylab('Base Excess (mmol/L)')+
-   theme(legend.position = 'none')
+  theme(legend.position = 'none')
 grid.arrange(p1,p2,p3)
 ```
 
