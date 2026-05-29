@@ -209,6 +209,27 @@ summary(mod_creat_weight)
 ```
 
 
+effect of malnutrition
+
+```{r wfaz_bun_cr_ratio}
+sm_data_analysis %>% filter(!is.na(Creatinine_umol_L), !is.na(BUN), Age<10, !is.na(wfaz)) %>%
+  ggplot(aes(x=Creatinine_umol_L, y = BUN, colour = wfaz< -2))+
+  geom_point(alpha=0.5)+geom_smooth(se = F)+
+  geom_hline(yintercept = 20)+geom_vline(xintercept = 265)+
+  xlab('Creatinine (umol/L)')+ylab('BUN (mmol/L)')+
+  scale_x_log10(breaks = breaks, minor_breaks = minor_breaks)+
+  scale_y_log10(breaks = breaks, minor_breaks = minor_breaks)+
+  annotation_logticks() + theme_bw(base_size = 20)+
+  theme(
+    legend.position = c(0.97, 0.03), 
+    legend.justification = c(1, 0), 
+    legend.background = element_rect(fill = "white", color = "black", size = 0.5),
+    legend.margin = margin(6, 6, 6, 6),  
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10))
+```
+
+
 ```{r weight_age, fig.width=12, fig.height=12}
 writeLines(sprintf('n=%s patients from %s studies have creatinine measured',sum(!is.na(sm_data_analysis$Creatinine_umol_L)), length(unique(sm_data_analysis$STUDY[!is.na(sm_data_analysis$Creatinine_umol_L)]))))
 
