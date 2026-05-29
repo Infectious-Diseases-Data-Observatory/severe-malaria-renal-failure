@@ -3,7 +3,7 @@ breaks <- 10^(-10:10)
 minor_breaks <- rep(1:9, 21)*(10^rep(-10:10, each=9))
 
 SEsmooth=F
-my_alpha=0.5
+my_alpha=0.2
 bun_limits = c(2,50)
 crea_limits = c(20,500)
 

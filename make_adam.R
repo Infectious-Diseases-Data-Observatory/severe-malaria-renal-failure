@@ -363,14 +363,14 @@ mb_SM_para = merge(mb_SM_para, mb_SM_hrp2, all = T)
 
 mb_SM_para = mb_SM_para %>%
   mutate(Malaria_Positive = case_when(
-    !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml>100 ~ T,
+    !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml>0 ~ T,
     !is.na(para_ul) & para_ul>0 ~ T,
     !is.na(Malaria_RDT) & Malaria_RDT ~ T,
-
+    
     !is.na(PfHRP2_ng_ml) & PfHRP2_ng_ml==0 ~ F,
     !is.na(para_ul) & para_ul==0 ~ F,
     !is.na(Malaria_RDT) & !Malaria_RDT ~ F,
-
+    
     T ~ NA
   ))
 # Malaria_Positive = ifelse(STUDYID=='UUJKO', T, Malaria_Positive))
@@ -411,10 +411,10 @@ dat_all_final = dat_all%>%
       STUDYID=='HRLGX' ~ 'AQ Gambia',
       STUDYID=='ZEYRR' ~ 'AAV',
       STUDYID=='GEZHR' ~ 'NO Uganda',
-      STUDYID=='JTGNG' ~ 'Chittagong',
+      STUDYID=='JTGNG' ~ 'Thailand cohort',
       STUDYID=='RHKEF' ~ 'CQ Gambia',
       STUDYID=='ZQEVB' ~ 'TRACT',
-      STUDYID=='MOLFZ' ~ 'KEMRI',
+      STUDYID=='MOLFZ' ~ 'Kilifi cohort',
       STUDYID=='ITYCK' ~ 'Dong Nai',
       STUDYID=='FSOUE' ~ 'Namazzi 2022',
       STUDYID=='NLSSA' ~ 'Conroy 2019',
@@ -431,13 +431,13 @@ table(dat_all_final$Continent, dat_all_final$STUDY)
 
 ## Get rid of implausible values for age and weight
 dat_all_final$Age[dat_all_final$Age<0]=NA
-dat_all_final$Age[dat_all_final$Ag==0]=0.5
+dat_all_final$Age[dat_all_final$Age==0]=0.5
 dat_all_final$Weight_kg[dat_all_final$Age>100 & dat_all_final$Weight_kg<1]=NA
 
 colnames(dat_all_final) = gsub(pattern = '/',replacement = '_',fixed = T,x = colnames(dat_all_final))
 colnames(dat_all_final) = gsub(pattern = '^',replacement = '_',fixed = T,x = colnames(dat_all_final))
 table(dat_all_final$STUDY, dat_all_final$Malaria_Positive, useNA = 'ifany')
-dat_all_final$Malaria_Positive[is.na(dat_all_final$Malaria_Positive) & dat_all_final$STUDY=='Chittagong']=TRUE
+dat_all_final$Malaria_Positive[is.na(dat_all_final$Malaria_Positive) & dat_all_final$STUDY=='Thailand cohort']=TRUE
 
 dat_all_final$BUN=dat_all_final$`Urea Nitrogen_mmol_L`
 dat_all_final$BUN = ifelse(dat_all_final$BUN==0,NA, dat_all_final$BUN)
@@ -489,10 +489,10 @@ dat_all_final$STUDY_color = brewer.pal(n = 12, name = 'Paired')[as.numeric(as.fa
 dat_all_final %>% ggplot(aes(x=Creatinine_umol_L, y=BUN, colour = STUDY))+
   geom_point()+
   scale_x_log10() + scale_y_log10()+geom_vline(xintercept = 5)+
-  geom_hline(yintercept = .5)
+  geom_hline(yintercept = .5) + facet_wrap(~STUDY)
 dat_all_final %>% ggplot(aes(x=Weight_kg, y=BUN, colour = STUDY))+
   geom_point()+
-  scale_y_log10()
+  scale_y_log10() + facet_wrap(~STUDY)
 dat_all_final %>% ggplot(aes(x=Weight_kg, y=Creatinine_umol_L, colour = STUDY))+
   geom_point()+
   scale_y_log10()
@@ -510,10 +510,12 @@ dat_all_final = dat_all_final %>%
          BUN = ifelse(BUN<.5, .5, BUN),
          BUN = ifelse(BUN>100, 100, BUN),
          Creat_BUN_ratio = Creatinine_umol_L/BUN)
-dat_all_final %>% ggplot(aes(x=log10(Creat_BUN_ratio), colour = STUDY))+
-  geom_histogram()
-
+dat_all_final %>% ggplot(aes(x=log10(Creat_BUN_ratio)))+
+  geom_histogram()+ facet_wrap(~STUDY)
+p1=dat_all_final %>% ggplot(aes(x=Age, Creat_BUN_ratio, colour = STUDY))+geom_point()+scale_y_log10()+scale_x_sqrt()+geom_hline(yintercept = c(1,100))
+ggsave(plot = p1,filename = 'BUN_Creatinine_outliers_removal.pdf')
 ind = which(dat_all_final$Creat_BUN_ratio<1 | dat_all_final$Creat_BUN_ratio>100)
+dat_all_final$STUDY[ind]
 dat_all_final$Creatinine_umol_L[ind]=NA
 dat_all_final$BUN[ind]=NA
 
@@ -537,8 +539,15 @@ dat_all_final = dat_all_final %>%
   `Died within 28 days` = Died & (is.na(Time_to_death) | Time_to_death < (28*24)),
   `Died within 28 days` = ifelse(`Died within 28 days`, 'Yes', 'No'))
 
+table(is.na(dat_all_final$RFSTDTC), dat_all_final$STUDY)
+
 dat_all_final$date_admission = ym(dat_all_final$RFSTDTC)
-dat_all_final = dat_all_final %>% select(-USUBJID, -RFSTDTC)
+dat_all_final$year_admission = year(dat_all_final$date_admission)
+table(is.na(dat_all_final$year_admission), dat_all_final$STUDY)
+dat_all_final$year_admission[dat_all_final$STUDY=='Conroy 2019']=2010
+dat_all_final$year_admission[dat_all_final$STUDY=='Dong Nai']=1992
+dat_all_final$year_admission[dat_all_final$STUDY=='Namazzi 2022']=2015
+
 ## Manual correction of base excess values in KEMRI
 ind = which(dat_all_final$STUDY=='KEMRI' &
               dat_all_final$date_admission>as.Date('1998-01-01') &
@@ -576,8 +585,8 @@ hist(dat_all_final$`Base Excess_mmol_L`, breaks = 200)
 
 
 # Remove Creatinine values in GEZHR - issues with measurement
-ind = which(dat_all_final$STUDYID == 'GEZHR')
-dat_all_final$Creatinine_umol_L[ind]=NA
+# ind = which(dat_all_final$STUDYID == 'GEZHR')
+# dat_all_final$Creatinine_umol_L[ind]=NA
 
 dat_all_final$Lactate = dat_all_final$`Lactic Acid_mmol_L`
 dat_all_final = dat_all_final%>% select(-`Lactic Acid_mmol_L`)
@@ -600,59 +609,73 @@ dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L > 30)]=NA
 dat_all_final$Sodium_mmol_L[which(dat_all_final$Sodium_mmol_L < 75 | dat_all_final$Sodium_mmol_L > 200)]=NA
 
 dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L >= 9.9 & dat_all_final$STUDY=='AQUAMAT')]=NA
-dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L >= 9 & dat_all_final$STUDY=='Namazzi 2022')]=NA
-dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L >= 9 & dat_all_final$STUDY=='TRACT')]=NA
+dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L >= 9.9 & dat_all_final$STUDY=='Namazzi 2022')]=NA
+dat_all_final$Potassium_mmol_L[which(dat_all_final$Potassium_mmol_L >= 9.9 & dat_all_final$STUDY=='TRACT')]=NA
 
+sum(!is.na(dat_all_final$`Partial Pressure Carbon Dioxide_mmHg`))
+
+dat_all_final = dat_all_final %>% select(-`Partial Pressure Carbon Dioxide_`, -`Partial Pressure Oxygen_mmHg`,-`Partial Pressure Carbon Dioxide_mmol_L`)
 
 source('hb_data_imputation.R')
 dat_all_final = hb_hct_impute(dat_all_final)
 
 
 write_csv(dat_all_final, file = 'Data/adam_out.csv')
-
+dat_all_final = dat_all_final %>% select(-USUBJID, -RFSTDTC)
 
 
 
 ### NOT YET CURATED ####
-# load('~/Dropbox/MORU/Severe malaria/Pigment_Neutrophils/Malaria_Pigment_Prognosis/RData/SMAC_data.RData')
-# myMergedData$USUBJID = (1:nrow(myMergedData))+10^7
-# smac = myMergedData %>% group_by(USUBJID) %>%
-#   mutate(
-#     STUDY='SMAC',
-#     Age = AGE/12,
-#     SEX = ifelse(SEX==1,'F','M'),
-#     Died = OUTCOME,
-#     Malaria_Positive=T,
-#     SITEID = country_names,
-#     COUNTRY = case_when(SITEID=='The Gambia' ~ 'GMB',
-#                         SITEID=='Kenya' ~ 'KEN',
-#                         SITEID=='Ghana' ~ 'GHA',
-#                         SITEID=='Malawi' ~ 'MLW',
-#                         SITEID=='Gabon (Lambarene)' ~ 'GBN',
-#                         SITEID=='Gabon (Libreville)' ~ 'GBN'
-#     ),
-#     Weight_kg = as.numeric(WEIGHT),
-#     Weight_kg = ifelse(Weight_kg>90, NA, Weight_kg),
-#     BCS_tot = sum(c(BMS, BVS, BES), na.rm = T),
-#     Coma_Final = ifelse(BCS_tot<=2,1, 0),
-#     `Respiratory distress` = ifelse(DEEPBR==1,T,F),
-#     para_ul = as.numeric(PARASIT),
-#     `Hemoglobin_g/L` = as.numeric(HB),
-#     `Respiratory Rate_breaths/min` = as.numeric(RESPRATE),
-#     Temperature_C = as.numeric(TEMP),
-#     `Base Excess_mmol/L` = as.numeric(BE),
-#     `Lactic Acid_mmol/L` = as.numeric(LACTATE),
-#     `Glucose_mmol/L` = as.numeric(GLUCOSE),
-#     `Hematocrit_%` = as.numeric(HCT)
-#   )
-# # ind_col = which(colnames(smac) %in% colnames(dat_all))
-# # colnames(smac)[ind_col]
-# # smac = smac[,ind_col]
-# write_csv(smac, file = 'Data/smac.csv')
-#
+load('~/Dropbox/MORU/Severe malaria/Pigment_Neutrophils/Malaria_Pigment_Prognosis/RData/SMAC_data.RData')
+smac = myMergedData %>% 
+  mutate(
+    STUDY='SMAC',
+    Age = AGE/12,
+    Age_category = cut(Age, breaks = c(0, 2, 5, 15, 100)),
+    SEX = ifelse(SEX==1,'F','M'),
+    Died = OUTCOME,
+    `Died within 28 days` = ifelse(Died==1, 'Yes', 'No'),
+    para_ul = as.numeric(PARASIT),
+    Malaria_Positive=ifelse(!is.na(para_ul) & para_ul>0, T, F),
+    SITEID = country_names,
+    COUNTRY = case_when(SITEID=='The Gambia' ~ 'GMB',
+                        SITEID=='Kenya' ~ 'KEN',
+                        SITEID=='Ghana' ~ 'GHA',
+                        SITEID=='Malawi' ~ 'MLW',
+                        SITEID=='Gabon (Lambarene)' ~ 'GBN',
+                        SITEID=='Gabon (Libreville)' ~ 'GBN'
+    ),
+    Continent='Africa',
+    Weight_kg = as.numeric(WEIGHT),
+    Weight_kg = ifelse(Weight_kg>90, NA, Weight_kg),
+    BCS_tot = sum(c(BMS, BVS, BES), na.rm = T),
+    Coma = ifelse(BCS_tot<=2,1, 0),
+    `Respiratory distress` = ifelse(DEEPBR==1,T,F),
+    Hb = as.numeric(HB),
+    `Respiratory Rate_breaths_min` = as.numeric(RESPRATE),
+    Temperature_C = as.numeric(TEMP),
+    `Base Excess_mmol_L` = as.numeric(BE),
+    Lactate = as.numeric(LACTATE),
+    Glucose_mmol_L = as.numeric(GLUCOSE),
+    HCT = as.numeric(HCT),
+    pH_ = PH,
+    `Partial Pressure Carbon Dioxide_mmHg` = PCO2
+  ) %>% select(-GLUCOSE, - DEEPBR, -HB, -WEIGHT, -BE) %>%
+  mutate(Age_category = recode(Age_category,
+                               "(0,2]" = "≤2",
+                               "(2,5]" = "(2,5]",
+                               "(5,15]" = "(5,15]",
+                               "(15,100]" = ">15"),
+         Glucose_mmol_L = ifelse(Glucose_mmol_L>20, NA, Glucose_mmol_L)
+         )
+# ind_col = which(colnames(smac) %in% colnames(dat_all))
+# colnames(smac)[ind_col]
+# smac = smac[,ind_col]
+write_csv(smac, file = 'Data/smac.csv')
+
 
 # ### NOT YET CURATED ####
-# kemri_dat = read_csv('~/Dropbox/Datasets/KEMRI Severe Malaria/1995_2020_severe_malaria_24092024_JW.csv')
+# kemri_dat = readr::read_csv('~/Dropbox/Datasets/KEMRI Severe Malaria/1995_2020_severe_malaria_24092024_JW.csv')
 # plot(kemri_dat$ageyr, kemri_dat$weight)
 # kemri_dat$weight[which(kemri_dat$ageyr<6 & kemri_dat$weight>30)]=c(6.7, 17)
 # mod_outlier = lm(weight~ageyr, data = kemri_dat)
@@ -694,3 +717,55 @@ write_csv(dat_all_final, file = 'Data/adam_out.csv')
 # colnames(kemri_dat)[ind_col]
 # kemri_dat = kemri_dat[,ind_col]
 
+
+# make the combined dataset
+
+dat_all_final$ID = 1:nrow(dat_all_final)
+smac$ID = nrow(dat_all_final)+(1:nrow(smac))
+cols_merge = intersect(colnames(smac), colnames(dat_all_final))
+combined_dataset = merge(smac, dat_all_final, by = c('ID', cols_merge), all = T)
+
+
+cols = c("SEX" ,"HCT", "Hb" ,"STUDY" ,"Age" ,"Died within 28 days",
+         "Malaria_Positive"    ,
+         "SITEID","COUNTRY"  ,"Weight_kg", "BCS_tot"  ,"Respiratory distress" ,
+         "para_ul" ,"Temperature_C",
+         "Coma", "Respiratory Rate_breaths_min"  , "Lactate",
+         "Time_to_death","Capillary Refill Time_sec"   ,
+         "Head Circumference_cm","Glucose_mmol_L",
+         "Heart Rate_beats_min","Height_cm",
+         "Mid-Upper Arm Circumference_cm",
+         "Systolic Blood Pressure_mmHg",
+         "Oxygen Saturation_%"  ,
+         "Diastolic Blood Pressure_mmHg",
+         "Blood in urine"  ,"Epilepsy","Fever","Jaundice"  ,"Seizure",
+         "Anuria"    ,   
+         "Cyanosis","Edema"   , 
+         "Shock","Prostration",         
+         "Sepsis","Bleeding", "Hypoglycaemia" ,
+         "Dehydration" , "Anion Gap_mmol_L","Base Excess_mmol_L",
+         "Bicarbonate_mEq_L"  ,
+         "Carbon Dioxide_mmol_L","Chloride_mEq_L","Creatinine_umol_L"     ,    
+         "Leukocytes_10_9_L","Partial Pressure Carbon Dioxide_mmHg" ,
+         "Platelets_10_9_L",                  
+         "Potassium_mmol_L",            
+         "Sodium_mmol_L"   ,
+         "pH_" , "Bilirubin_umol_L","Direct Bilirubin_umol_L",
+         "Eosinophils_Leukocytes_%", "Indirect Bilirubin_",
+         "Lymphocytes_Leukocytes_%","Monocytes_Leukocytes_%",
+         "Neutrophils_Leukocytes_%",
+         "Reticulocytes_Erythrocytes_%",
+         "Chloride_mmol_L", "Anion Gap_" , 
+         "C Reactive Protein_mg_L","Continent","BUN", "Age_category"           ,
+         "year_admission", "PfHRP2_ng_ml")
+#combined_dataset = combined_dataset[which(combined_dataset$Malaria_Positive), cols]
+combined_dataset = combined_dataset[ , cols]
+
+combined_dataset = combined_dataset%>% arrange(STUDY) %>% 
+  filter(!is.na(`Died within 28 days`)) %>%
+  mutate(Died_28D = ifelse(`Died within 28 days`=='Yes',1,0))
+
+combined_dataset <- combined_dataset %>% select(where(~ !all(is.na(.))))
+
+
+write_csv(x = combined_dataset, file = 'Data/Combined_dataset.csv')

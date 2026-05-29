@@ -12,10 +12,14 @@ knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
                       fig.pos = 'H',dev = 'png', dpi = 300)
 
 
-library(brms)
+library(brms, verbose = T)
 library(tidyverse)
 library(grid)
 library(gridExtra)
+N_iter = 2000
+
+
+version
 ```
 
 
@@ -24,6 +28,7 @@ Plotting params
 
 ```{r}
 source('setup_parameters.R')
+RUN_STAN_MODELS=F
 ```
 
 
@@ -38,80 +43,161 @@ load('RData/Analysis_dataset.RData')
 Analysis of BUN data stratified by age group and coma status
 
 ```{r}
-sm_data_bun = sm_data_analysis %>% filter(!is.na(BUN))
-f_brm_mod_bun = as.formula(bf(Died_28D ~ s(log10(BUN),by=Age_category)+Coma+(1|STUDY/SITE_STUDY)))
+sm_data_bun = sm_data_analysis %>% filter(!is.na(BUN)) %>%mutate(log10_BUN=log10(BUN),sqrt_age=sqrt(Age))
+
+mod_gam = mgcv::gam(Died_28D ~  te(log10_BUN, sqrt_age, bs = c("cr", "cr"), k = c(10, 6))+
+                      Coma + s(SITE_STUDY,bs='re') + s(year_admission),
+                    data   = sm_data_bun %>% filter(STUDY!='TRACT'),
+                    family = binomial(link = "logit"),
+                    method = "REML",
+                    select = TRUE)
+mgcv::vis.gam(mod_gam, view = c("log10_BUN", "sqrt_age"),
+              plot.type = "contour", color = "topo", too.far = 0.05)
+
+
+mod_gam_fs = mgcv::gam(Died_28D ~  s(log10(BUN), sqrt(Age), bs = c('fs'))+
+                         Coma + s(SITE_STUDY,bs='re') + year_admission,
+                       data   = sm_data_bun %>% filter(STUDY!='TRACT'),
+                       family = binomial(link = "logit"),
+                       method = "REML",
+                       select = TRUE)
+
+
+mod_gam_fs_u5 = mgcv::gam(Died_28D ~  s(log10(BUN))+
+                            Coma + s(SITE_STUDY,bs='re') + year_admission,
+                          data = sm_data_bun %>% filter(Age<5),
+                          family = binomial(link = "logit"),
+                          method = "REML",
+                          select = TRUE)
+predict(object = mod_gam_fs_u5, newdata = data.frame(BUN=10,Coma='No',SITE_STUDY= -1, year_admission=2000),na.form =NA,type = 'response')
+# predict(object = mod_gam_fs_u15, newdata = data.frame(BUN=10,Coma='No',SITE_STUDY= -1, year_admission=2000),na.form =NA,type = 'response')
+```
+
+
+```{r stan_models_bun}
+#tensor product models
+BUN_tensor_prod = as.formula(bf(Died_28D ~ t2(log10(BUN),Age,bs = c("cr", "cr"))+Coma+s(year_admission)+(1|STUDY/SITE_STUDY)))
+#smooth spline models with categorical age
+BUN_fs_mod = as.formula(bf(Died_28D ~ s(log10(BUN), bs = "cr", k = 10) + s(log10(BUN),Age_category,bs = "fs", m = 1, k = 10)+Age_category+Coma+s(year_admission)+(1|STUDY/SITE_STUDY)))
+
+
+# f_brm_mod_bun = as.formula(bf(Died_28D ~ s(log10(BUN),by=Age_category)+Coma+(1|STUDY/SITE_STUDY)))
 
 f_path = 'RData/bun_models.RData'
-RUN_STAN_MODELS=F
 if(!file.exists(f_path) | RUN_STAN_MODELS){
-  mod_bun_age_het = 
-    brm(formula = f_brm_mod_bun,
+  BUN_tensor_prod_fit = 
+    brm(formula = BUN_tensor_prod,
         data = sm_data_bun ,
         family = bernoulli(), cores = 4, seed = 858,
-        iter = 4000, warmup = 2000, thin = 8, refresh = 250)
+        iter = N_iter, warmup = N_iter/2, thin = 4)
   
-  mod_bun_age_het2 = 
-    brm(formula = f_brm_mod_bun,
-        data = sm_data_bun %>% filter(STUDY!='TRACT'),
+  # BUN_tensor_prod_fit2 = 
+  #   brm(formula = BUN_tensor_prod,
+  #       data = sm_data_bun %>% filter(STUDY!='TRACT'),
+  #       family = bernoulli(), cores = 4, seed = 858,
+  #       iter = N_iter, warmup = N_iter/2, thin = 4)
+  
+  BUN_fs_mod_fit = 
+    brm(formula = BUN_fs_mod,
+        data = sm_data_bun,
         family = bernoulli(), cores = 4, seed = 17,
         iter = 2000, warmup = 1000, thin = 1, refresh = 250)
   
-  mod_bun_age_het3 = 
-    brm(formula = f_brm_mod_bun,
-        data = sm_data_bun %>% filter(PfHRP2_ng_ml > 800),
-        family = bernoulli(), cores = 4, seed = 17,
-        iter = 2000, warmup = 1000, thin = 1, refresh = 250)
   
-  save(mod_bun_age_het,mod_bun_age_het2,mod_bun_age_het3, file = f_path)
+  save(BUN_tensor_prod_fit,#BUN_tensor_prod_fit2,
+       BUN_fs_mod_fit, file = f_path)
 } else {
   load(f_path)
 }
 ```
 
 
+Summary of model fit and parameters
+```{r}
+summary(BUN_fs_mod_fit)
+```
 
 ```{r}
 k_vals=40
 test_data = expand_grid(BUN = 10^seq(0.2,1.6,length.out=k_vals),
-                        Age_category=levels(sm_data_bun$Age_category),
-                        Weight_category=levels(sm_data_bun$Weight_category),
+                        Age = c(2, 5, 20),
+                        year_admission=2000,
                         Coma=unique(sm_data_bun$Coma),
-                        STUDY=unique(sm_data_bun$STUDY), 
+                        STUDY=unique(sm_data_bun$STUDY)[1], 
                         SITE_STUDY = -1) %>% 
+  mutate(Age_category=cut(Age,breaks = c(0, 2, 5, 15, 100)),
+         Age_category = recode(Age_category,
+                               "(0,2]" = "≤2",
+                               "(2,5]" = "(2,5]",
+                               "(5,15]" = "(5,15]",
+                               "(15,100]" = ">15")) %>% 
   arrange(BUN)
 
-# remove non plausible combinations
-test_data = test_data %>%
-  filter(!(Age_category==">15" & Weight_category=='(0,25]'),
-         !(Age_category %in% c("(2,5]","≤2") & Weight_category=='(25,100]')) %>%
-  mutate(Age_category=factor(Age_category, levels = c("≤2","(2,5]","(5,15]",">15")))
+# # remove non plausible combinations
+# test_data = test_data %>%
+#   filter(!(Age_category==">15" & Weight_category=='(0,25]'),
+#          !(Age_category %in% c("(2,5]","≤2") & Weight_category=='(25,100]')) %>%
+#   mutate(Age_category=factor(Age_category, levels = c("≤2","(2,5]","(5,15]",">15")))
 
 # get model predictions
-# Full model
-preds = posterior_epred(mod_bun_age_het, newdata = test_data, re_formula = NA)
-test_data$pred_mod_bun_age_het = colMeans(preds)
-test_data$bun_age_het_threshold = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
+# Tensor product model
+preds = posterior_epred(BUN_tensor_prod_fit, newdata = test_data, re_formula = NA)
+test_data$BUN_tensor_prod_pred = colMeans(preds)
+test_data$BUN_tensor_prod_threshold = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
 
-# Remove TRACT
-preds = posterior_epred(mod_bun_age_het2, newdata = test_data, re_formula = NA)
-test_data$pred_mod_bun_age_het2 = colMeans(preds)
-test_data$bun_age_het_threshold2 = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
+# Tensor product model - Remove TRACT
+# preds = posterior_epred(BUN_tensor_prod_fit2, newdata = test_data, re_formula = NA)
+# test_data$BUN_tensor_prod_pred2 = colMeans(preds)
+# test_data$BUN_tensor_prod_threshold2 = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
 
 
-# High HRP2 model
-test_data3 = test_data %>% filter(Age_category !='>15') %>% mutate(Age_category = droplevels(Age_category))
-preds = posterior_epred(mod_bun_age_het3, newdata = test_data3, re_formula = NA)
-test_data3$pred_mod_bun_age_het3 = colMeans(preds)
-test_data3$bun_age_het_threshold3 = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
+# fs model
+preds = posterior_epred(BUN_fs_mod_fit, newdata = test_data, re_formula = NA)
+test_data$BUN_fs_pred = colMeans(preds)
+test_data$BUN_fs_threshold = apply(preds, 2, f_threshold,mortality_threshold=mortality_threshold)
 ```
 
 
 
-```{r age_vs_BUN, fig.width=8, fig.height=8}
-p1=test_data %>%
-  ggplot(aes(x = BUN, y = pred_mod_bun_age_het, 
-             colour = Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
+```{r BUN_tensor_model, fig.width=8, fig.height=8}
+p1=test_data %>%mutate(Age = as.factor(Age))%>%
+  ggplot(aes(x = BUN, y = BUN_tensor_prod_pred, 
+             colour = Age,linetype = Coma,
+             group = interaction(Age,Coma)))+
+  geom_line(linewidth = 1.5)+ ylab('Predicted mortality')+
+  scale_x_log10() +
+  annotation_logticks(sides='b')+theme_bw(base_size = 15)+
+  xlab('BUN (mmol/L)')+
+  geom_hline(yintercept = mortality_threshold)+
+    scale_colour_manual(
+        name = "Age (years)",
+        values = c("2" = "orange", "5" = "darkred", "20" = 'purple') )+
+  theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
+        legend.justification = c(0, 1))   # align legend's bottom-left to that point
+p1_threshold=test_data %>%mutate(Age = as.factor(Age))%>%
+  ggplot(aes(x = BUN, y = BUN_tensor_prod_threshold, 
+             colour = Age,linetype = Coma,
+             group = interaction(Age,Coma)))+
+  geom_line(linewidth = 1.5)+ylab('Probability mortality > 5%')+
+  scale_x_log10() + theme_bw(base_size = 15)+
+  annotation_logticks(sides='b')+
+  xlab('BUN (mmol/L)')+
+  geom_hline(yintercept = .9)+geom_vline(xintercept = 10)+
+  theme(legend.position = 'none')+
+    scale_colour_manual(
+        name = "Age (years)",
+        values = c("2" = "orange", "5" = "darkred", "20" = 'purple') )
+grid.arrange(p1, p1_threshold)
+save(p1,p1_threshold, file = 'RData/bun_figures.RData')
+```
+
+
+
+```{r BUN_tensor_model2, fig.width=8, fig.height=8}
+p1=test_data %>%mutate(Age = as.factor(Age))%>%
+  ggplot(aes(x = BUN, y = BUN_tensor_prod_pred2, 
+             colour = Age,linetype = Coma,
+             group = interaction(Age,Coma)))+
   geom_line()+ ylab('Predicted mortality')+
   scale_x_log10() +
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+
@@ -120,10 +206,10 @@ p1=test_data %>%
   labs(colour='Age category')+
   theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
         legend.justification = c(0, 1))   # align legend's bottom-left to that point
-p1_threshold=test_data %>%
-  ggplot(aes(x = BUN, y = bun_age_het_threshold, 
-             colour = Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
+p1_threshold=test_data %>%mutate(Age = as.factor(Age))%>%
+  ggplot(aes(x = BUN, y = BUN_tensor_prod_threshold2, 
+             colour = Age,linetype = Coma,
+             group = interaction(Age,Coma)))+
   geom_line()+ylab('Probability mortality > 5%')+
   scale_x_log10() + theme_bw(base_size = 13)+
   annotation_logticks(sides='b')+
@@ -131,124 +217,33 @@ p1_threshold=test_data %>%
   geom_hline(yintercept = .9)+geom_vline(xintercept = 10)+
   theme(legend.position = 'none')
 grid.arrange(p1, p1_threshold)
-save(p1,p1_threshold, file = 'RData/bun_figures.RData')
 ```
 
 
-```{r age_vs_BUN_remove_TRACT, fig.width=10, fig.height=7}
-p1=test_data %>%
-  ggplot(aes(x = BUN, y = pred_mod_bun_age_het2, 
-             colour = Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
+fs model
+
+```{r BUN_fs_model, fig.width=8, fig.height=8}
+p1=test_data %>%mutate(Age = as.factor(Age))%>%
+  ggplot(aes(x = BUN, y = BUN_fs_pred, 
+             colour = Age,linetype = Coma,
+             group = interaction(Age,Coma)))+
   geom_line()+ ylab('Predicted mortality')+
   scale_x_log10() +
   annotation_logticks(sides='b')+theme_bw(base_size = 13)+
   xlab('BUN (mmol/L)')+
-  geom_hline(yintercept = mortality_threshold)
-p1_threshold=test_data %>%
-  ggplot(aes(x = BUN, y = bun_age_het_threshold2, 
-             colour = Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
+  geom_hline(yintercept = mortality_threshold)+
+  labs(colour='Age category')+
+  theme(legend.position = c(0.02, 0.98),
+        legend.justification = c(0, 1)) 
+p1_threshold=test_data %>%mutate(Age = as.factor(Age))%>%
+  ggplot(aes(x = BUN, y = BUN_fs_threshold, 
+             colour = Age,linetype = Coma,
+             group = interaction(Age,Coma)))+
   geom_line()+ylab('Probability mortality > 5%')+
   scale_x_log10() + theme_bw(base_size = 13)+
   annotation_logticks(sides='b')+
   xlab('BUN (mmol/L)')+
-  geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
+  geom_hline(yintercept = .9)+geom_vline(xintercept = 10)+
+  theme(legend.position = 'none')
 grid.arrange(p1, p1_threshold)
 ```
-
-
-```{r age_vs_BUN_high_hrp2, fig.width=10, fig.height=7}
-p1=test_data3 %>%
-  ggplot(aes(x = BUN, y = pred_mod_bun_age_het3, 
-             colour =Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
-  geom_line()+ ylab('Predicted mortality')+
-  scale_x_log10() +
-  annotation_logticks(sides='b')+theme_bw(base_size = 13)+
-  xlab('BUN (mmol/L)')+
-  geom_hline(yintercept = mortality_threshold)
-p1_threshold=test_data3 %>%
-  ggplot(aes(x = BUN, y = bun_age_het_threshold3, 
-             colour = Age_category,linetype = Coma,
-             group = interaction(Age_category,Coma)))+
-  geom_line()+ylab('Probability mortality > 5%')+
-  scale_x_log10() + theme_bw(base_size = 13)+
-  annotation_logticks(sides='b')+
-  xlab('BUN (mmol/L)')+
-  geom_hline(yintercept = .95)+geom_vline(xintercept = 10)
-grid.arrange(p1, p1_threshold)
-```
-
-
-
-## CRP and BUN/Creatinine
-
-```{r}
-sm_hrp2_platelets = sm_data_analysis %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Platelets_10_9_L)) %>%
-  mutate(PfHRP2_status = ifelse(PfHRP2_ng_ml>800, '>800', '<800'),
-         True_SM = PfHRP2_ng_ml>1000 & Platelets_10_9_L<150)
-table(sm_hrp2_platelets$STUDY)
-sm_hrp2_platelets %>% ggplot(aes(x=True_SM, y = BUN))+scale_y_log10()+geom_boxplot()
-sm_hrp2_platelets %>% ggplot(aes(x=True_SM, y = Creatinine_umol_L))+scale_y_log10()+geom_boxplot()
-
-sm_crp = sm_data_analysis %>% filter(!is.na(`C Reactive Protein_mg_L`), !is.na(BUN),
-                                     !is.na(PfHRP2_ng_ml), !is.na(Platelets_10_9_L)) %>%
-  mutate(PfHRP2_status = ifelse(PfHRP2_ng_ml>800, '>800', '<800'),
-         True_SM = PfHRP2_ng_ml>1000 & Platelets_10_9_L<150)
-
-mean(sm_crp$True_SM)
-table(True_SM=sm_crp$True_SM, low_CRP=sm_crp$`C Reactive Protein_mg_L`<100)
-
-roc_obj <- pROC::roc(sm_crp$True_SM, sm_crp$`C Reactive Protein_mg_L`,)
-
-# Plot the ROC curve
-plot(roc_obj, col = "blue", lwd = 2, main = "ROC Curve")
-
-sm_crp %>% ggplot(aes(x=`C Reactive Protein_mg_L`+1, y = BUN, colour = PfHRP2_status))+
-  geom_point()+scale_x_log10(minor_breaks=minor_breaks)+scale_y_log10(minor_breaks=minor_breaks)+
-  theme_bw(base_size = 13)+
-  labs(color='Plasma PfHRP2')+geom_smooth()
-
-p1=sm_crp %>% ggplot(aes(x=`C Reactive Protein_mg_L`+10, y = PfHRP2_ng_ml+10, colour = True_SM))+
-  geom_point()+scale_x_log10(minor_breaks=minor_breaks)+scale_y_log10(minor_breaks=minor_breaks)+
-  theme_bw(base_size = 13)+xlab('CRP (mg/L)')+ylab('Plasma PfHRP2 (ng/ml)')
-
-p2=sm_crp %>% ggplot(aes(x=`C Reactive Protein_mg_L`+10, y = Platelets_10_9_L, colour = True_SM))+
-  geom_point()+scale_x_log10(minor_breaks=minor_breaks)+scale_y_log10(minor_breaks=minor_breaks)+
-  theme_bw(base_size = 13)+xlab('CRP (mg/L)')+ylab('Platelet count (x10^6/L)')
-grid.arrange(p1,p2)
-
-
-sm_hrp2 = sm_data %>% filter(!is.na(PfHRP2_ng_ml), !is.na(Coma)) %>% 
-  mutate(STUDY = as.factor(STUDY),
-         Coma = ifelse(Coma==1, 'Yes','No'))
-table(sm_hrp2$STUDY)
-mod_hrp2 = mgcv::gam(Died ~ s(log10(PfHRP2_ng_ml+10)), family = 'binomial', data = sm_hrp2)
-
-mod_hrp2_formula=
-  as.formula(bf(Died_28D ~ s(log10(PfHRP2_ng_ml+10))+
-                  Coma+(1|STUDY)))
-
-mod_hrp2 = brms::brm(mod_hrp2_formula, data = sm_hrp2,
-                     family = bernoulli(), cores = 4, seed = 17,
-                     iter = 1000, warmup = 500, thin = 1, refresh = 250)
-
-test_data = expand.grid(PfHRP2_ng_ml = 10^(seq(1,5,length.out=50)), STUDY = -1, Coma=c('Yes','No'))
-preds = posterior_epred(mod_hrp2, newdata = test_data, re_formula = NA)
-test_data$Mortality_predicted = colMeans(preds)
-p1 = sm_hrp2 %>% ggplot(aes(x=PfHRP2_ng_ml+10))+geom_histogram()+
-  scale_x_log10(minor_breaks=minor_breaks,limits=c(10,10^5))+
-  theme_bw()+xlab('Plasma PfHRP2 (ng/ml)')
-p2 = test_data %>% 
-  ggplot(aes(x=PfHRP2_ng_ml, y = Mortality_predicted, colour = Coma))+
-  geom_line()+
-  scale_x_log10(minor_breaks=minor_breaks,limits=c(10,10^5))+ylim(0, 0.5)+
-  theme_bw()+xlab('Plasma PfHRP2 (ng/ml)')+
-   theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
-        legend.justification = c(0, 1))   # align legend's bottom-left to that point
-
-grid.arrange(p1,p2, nrow=2)
-```
-
-

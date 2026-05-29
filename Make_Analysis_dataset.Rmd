@@ -104,22 +104,37 @@ table(sm_data$STUDY,sm_data$Reason_exclude)
 
 
 
-## Multiple imputation of core variables
+## Single imputation of weight, height and age
+
+Missing data in analysis dataset
 
 ```{r}
+sum(sm_data$INCLUDE_CC_ANALYSIS)
+
+n_creat = sum(sm_data$INCLUDE_CC_ANALYSIS & !is.na(sm_data$Creatinine_umol_L))
+
+writeLines(sprintf('In the analysis dataset, Age is missing in %s patients', sum(is.na(sm_data$Age) & sm_data$INCLUDE_CC_ANALYSIS)))
+writeLines(sprintf('In the creatinine analysis dataset, Age is missing in %s patients', sum(is.na(sm_data$Age) & sm_data$INCLUDE_CC_ANALYSIS & !is.na(sm_data$Creatinine_umol_L))))
+
+writeLines(sprintf('In the analysis dataset, Weight is missing in %s patients', sum(is.na(sm_data$Weight_kg) & sm_data$INCLUDE_CC_ANALYSIS)))
+n_miss_weight = sum(is.na(sm_data$Weight_kg) & sm_data$INCLUDE_CC_ANALYSIS & !is.na(sm_data$Creatinine_umol_L))
+writeLines(sprintf('In the creatinine analysis dataset, Weight is missing in %s patients (%s%%)', n_miss_weight, round(100*n_miss_weight/n_creat)))
+
+writeLines(sprintf('In the analysis dataset, Height is missing in %s patients', sum(is.na(sm_data$Height_cm) & sm_data$INCLUDE_CC_ANALYSIS)))
+n_miss_height = sum(is.na(sm_data$Height_cm) & sm_data$INCLUDE_CC_ANALYSIS & !is.na(sm_data$Creatinine_umol_L))
+writeLines(sprintf('In the creatinine analysis dataset, Height is missing in %s patients (%s%%)', n_miss_height,round(100* n_miss_height/n_creat)))
+```
+
+```{r multiple_imputation}
+RUN_IMPUTE_MODEL = F
 source('multiple_imputation.R')
+detach("package:mice", unload=TRUE)
 ```
 
 
 ## Make analysis data
 
 ```{r}
-rm(list=ls())
-detach("package:mice", unload=TRUE)
-detach("package:conflicted", unload=TRUE)
-
-sm_data = readr::read_csv(file = 'Data/Analysis_data.csv')
-load('RData/imputed_dataset.RData')
 imp1 = mice::complete(imp_list,action = 1)
 sm_data$Weight_imputed = imp1$Weight_kg
 sm_data$Age_imputed = imp1$Age
@@ -183,15 +198,21 @@ sm_data_analysis = sm_data_analysis %>%
     CREAT_ANALYSIS = !is.na(Creatinine_umol_L),
     BUN_CREAT_ANALYSIS = BUN_ANALYSIS & CREAT_ANALYSIS)
 
+#we use single imputation for weight and height
+writeLines(sprintf('Height is missing in %s, weight is missing in %s', sum(is.na(sm_data_analysis$Height_cm)),
+                   sum(is.na(sm_data_analysis$Weight_kg))))
+table(sm_data_analysis$STUDY, is.na(sm_data_analysis$Height_cm))
 sm_data_analysis = sm_data_analysis %>%
   mutate(Age = ifelse(is.na(Age), Age_imputed, Age),
          Weight_kg = ifelse(is.na(Weight_kg), Weight_imputed, Weight_kg),
-         Height_cm = ifelse(is.na(Height_cm), Height_imputed, Height_cm))
+         Height_cm = ifelse(is.na(Height_cm), Height_imputed, Height_cm),
+         year_admission = ifelse(is.na(year_admission)&(STUDYID=='CCFRW'),1994,year_admission))
 ```
 
 
 
 ```{r}
 save(sm_data_analysis, sm_data, file = 'RData/Analysis_dataset.RData')
+save(sm_data, file = 'RData/All_data_Severe_malaria.RData')
 ```
 
