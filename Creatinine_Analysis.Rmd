@@ -346,20 +346,100 @@ summary(Creat_fs_mod_fit_Schwartz)
 ```
 
 
-```{r nested_random_effects}
-ranef_Pottel_CG = as.data.frame(ranef(Creat_tensor_prod_fit_Pottel_CG)$STUDY[,,'Intercept'])
-ranef_Pottel_CG$Study = rownames(ranef_Pottel_CG)
-ranef_Pottel_CG %>% ggplot(aes(x =Study, y = Estimate ))+geom_point()+geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5))+
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
-  ylab('Log odds ratio for death')
+Estimated study-level and study-site-level random intercepts for the two primary
+models, shown side by side. The urea model is loaded here, so `BUN_Analysis.Rmd`
+must have been run first.
 
+```{r nested_random_effects_setup}
+load('RData/bun_models.RData')   # BUN_tensor_prod_fit, for the right-hand panels
 
-ranef_Pottel_CG = as.data.frame(ranef(Creat_tensor_prod_fit_Pottel_CG)$`STUDY:SITE_STUDY`[,,'Intercept'])
-ranef_Pottel_CG$Site = rownames(ranef_Pottel_CG)
-ranef_Pottel_CG %>% ggplot(aes(x =Site, y = Estimate ))+geom_point()+geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5))+
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))+
-  ylab('Log odds ratio for death')
+RANEF_MODELS = list(
+  'Creatinine fold change' = Creat_tensor_prod_fit_Pottel_CG,
+  'Urea (BUN)'             = BUN_tensor_prod_fit)
 
+f_get_ranef = function(mod, model_name, group){
+  re = as.data.frame(ranef(mod)[[group]][, , 'Intercept'])
+  re$level = rownames(re)
+  re$model = model_name
+  re
+}
+
+# Nested factor levels have the form "<STUDY>_<SITE>_<STUDY>"; strip the
+# redundant study name from both ends to leave a readable "STUDY: SITE" label.
+f_site_label = function(level, studies){
+  vapply(level, function(l){
+    st   = studies[startsWith(l, paste0(studies, '_'))]
+    st   = st[which.max(nchar(st))]          # longest matching study prefix
+    site = sub(paste0('^\\Q', st, '\\E_'), '', l)
+    site = sub(paste0('_\\Q', st, '\\E$'), '', site)
+    paste0(st, ': ', site)
+  }, character(1), USE.NAMES = FALSE)
+}
+
+# The two models contain different studies and sites, so the y variable is made
+# unique per panel and the panel prefix is stripped again at the axis.
+f_order_within = function(d){
+  d %>%
+    mutate(y = paste(model, label, sep = '___')) %>%
+    arrange(model, Estimate) %>%
+    mutate(y = factor(y, levels = unique(y)))
+}
+f_strip_panel = function(x) sub('^.*?___', '', x)
+
+f_caterpillar = function(d, colour_by_study = FALSE){
+  aes_base = if(colour_by_study){
+    aes(x = Estimate, y = y, colour = STUDY)
+  } else {
+    aes(x = Estimate, y = y)
+  }
+  p = ggplot(d, aes_base) +
+    geom_vline(xintercept = 0, linetype = 'dashed', colour = 'grey40') +
+    geom_errorbar(aes(xmin = Q2.5, xmax = Q97.5), orientation = 'y', width = 0) +
+    geom_point(size = 2.2) +
+    facet_wrap(~model, scales = 'free_y') +
+    scale_y_discrete(labels = f_strip_panel) +
+    theme_bw(base_size = 13) +
+    theme(panel.grid.major.y = element_blank(), legend.position = 'none') +
+    xlab('Log odds ratio for death (deviation from overall intercept)') +
+    ylab('')
+  if(colour_by_study) p = p + scale_colour_viridis_d(end = 0.9)
+  p
+}
+```
+
+Study-level random intercepts (S18 Fig):
+
+```{r nested_random_effects_study, fig.width=9, fig.height=4.5}
+ranef_study = bind_rows(lapply(names(RANEF_MODELS), function(nm)
+  f_get_ranef(RANEF_MODELS[[nm]], nm, 'STUDY'))) %>%
+  rename(label = level) %>%
+  f_order_within()
+
+f_caterpillar(ranef_study)
+```
+
+Study-site-level random intercepts, nested within study (S19 Fig):
+
+```{r nested_random_effects_site, fig.width=10, fig.height=8}
+ranef_site = bind_rows(lapply(names(RANEF_MODELS), function(nm){
+  mod     = RANEF_MODELS[[nm]]
+  studies = unique(as.character(mod$data$STUDY))
+  d       = f_get_ranef(mod, nm, 'STUDY:SITE_STUDY')
+  d$label = f_site_label(d$level, studies)
+  d$STUDY = sub(':.*$', '', d$label)
+  d
+})) %>%
+  f_order_within()
+
+f_caterpillar(ranef_site, colour_by_study = TRUE)
+
+# Range of site-level effects quoted in the Results
+ranef_site %>% group_by(model) %>%
+  summarise(n_site   = n(),
+            min_lor  = round(min(Estimate), 2),
+            max_lor  = round(max(Estimate), 2),
+            OR_range = round(exp(max(Estimate) - min(Estimate)), 1),
+            .groups  = 'drop')
 ```
 
 

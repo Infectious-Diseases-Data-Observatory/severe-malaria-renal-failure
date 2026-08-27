@@ -76,9 +76,9 @@ granted.
 | `setup_parameters.R` | Shared constants: axis breaks, plotting limits, the 5% mortality threshold. Sourced by each analysis document. |
 | `renal_analysis.Rmd` | Descriptive analyses; creatinine and urea by age and weight; non-parametric mortality by exposure category; potassium and acidosis. |
 | `BUN_Analysis.Rmd` | Bayesian models for urea. **Run before `Creatinine_Analysis.Rmd`.** |
-| `Creatinine_Analysis.Rmd` | Baseline creatinine equations; Bayesian models for absolute creatinine and creatinine fold change; the multivariable creatinine-versus-urea comparison; ROC and diagnostic accuracy; *Pf*HRP2 associations. |
+| `Creatinine_Analysis.Rmd` | Baseline creatinine equations; Bayesian models for absolute creatinine and creatinine fold change; study- and site-level random effects; the multivariable creatinine-versus-urea comparison; ROC and diagnostic accuracy; *Pf*HRP2 associations. |
 | `Venn_Diagrams.Rmd` | Euler diagrams of overlapping severe malaria manifestations. |
-| `Variance_components.R` | Posterior summaries of the nested random-effect standard deviations and median odds ratios for every fitted model. |
+| `Variance_components.R` | Posterior summaries of the nested random-effect standard deviations and median odds ratios for every fitted model. Run after steps 2 and 3, since it loads both sets of fitted models. |
 | `descriptive_analysis_prep.Rmd`, `descriptive_analysis.Rmd` | Data checking and cohort description, run against `Data/adam_out.csv` directly. |
 | `plot_missing_data.R`, `plots.R` | Missingness and exploratory plotting helpers. |
 | `Non_Severe_Malaria.R` | Sensitivity analyses restricted by *Pf*HRP2 concentration. |
@@ -119,8 +119,10 @@ time — random-forest chained equations over ~16,000 patients and 25 variables.
 rmarkdown::render("BUN_Analysis.Rmd")
 ```
 
-Writes `RData/bun_models.RData` and `RData/bun_figures.RData`. The latter is
-loaded by `Creatinine_Analysis.Rmd`, so this step must precede step 3.
+Writes `RData/bun_models.RData` and `RData/bun_figures.RData`. Both are loaded by
+`Creatinine_Analysis.Rmd` — the model objects for the random-effect figures and
+the marker comparisons, the figure objects for a combined panel — so this step
+must precede step 3.
 
 **3. Fit the creatinine models and the marker comparisons.**
 
