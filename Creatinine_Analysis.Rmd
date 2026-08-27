@@ -770,17 +770,21 @@ summary_df <- marginal_effects %>%
     .groups = "drop"
   ) %>%
   mutate(
-    Age_category2 = 
+    Age_category2 =
       case_when(
         Age_category=='25' ~ '[2-5]',
         Age_category=='515'~ '(5-15]',
         Age_category=='U2' ~ '<2',
-        Age_category=='adults' ~ '>15'), 
+        Age_category=='adults' ~ '>15'),
     Biomarker = case_when(
       Biomarker=='BUN' ~ 'BUN\n(absolute value)',
       Biomarker=='Creat' ~ 'Creatinine\n(Fold change from baseline)'),
-    Age_category = factor(Age_category2, levels = c('<2','[2-5]','(5-15]','>15'))
-  ) %>% arrange(Biomarker, Age_category)
+    # The plot maps x = Age_category2, so the ordering has to be set on that
+    # column. coord_flip() draws the first factor level at the bottom of the
+    # panel, hence levels run oldest to youngest to put <2 years at the top.
+    Age_category2 = factor(Age_category2, levels = c('>15','(5-15]','[2-5]','<2')),
+    Age_category = Age_category2
+  ) %>% arrange(Biomarker, desc(Age_category2))
 
 ggplot(summary_df, aes(x = Age_category2, y = OR, ymin = lower, ymax = upper, color = Biomarker)) +
   geom_pointrange(position = position_dodge(width = 0.5)) +
@@ -828,17 +832,21 @@ summary_df <- marginal_effects %>%
     .groups = "drop"
   ) %>%
   mutate(
-    Age_category2 = 
+    Age_category2 =
       case_when(
         Age_category=='25' ~ '[2-5]',
         Age_category=='515'~ '(5-15]',
         Age_category=='U2' ~ '<2',
-        Age_category=='adults' ~ '>15'), 
+        Age_category=='adults' ~ '>15'),
     Biomarker = case_when(
       Biomarker=='BUN' ~ 'BUN\n(absolute value)',
       Biomarker=='Creat' ~ 'Creatinine\n(Fold change from baseline)'),
-    Age_category = factor(Age_category2, levels = c('<2','[2-5]','(5-15]','>15'))
-  ) %>% arrange(Biomarker, Age_category)
+    # The plot maps x = Age_category2, so the ordering has to be set on that
+    # column. coord_flip() draws the first factor level at the bottom of the
+    # panel, hence levels run oldest to youngest to put <2 years at the top.
+    Age_category2 = factor(Age_category2, levels = c('>15','(5-15]','[2-5]','<2')),
+    Age_category = Age_category2
+  ) %>% arrange(Biomarker, desc(Age_category2))
 
 ggplot(summary_df, aes(x = Age_category2, y = OR, ymin = lower, ymax = upper, color = Biomarker)) +
   geom_pointrange(position = position_dodge(width = 0.5)) +
@@ -973,29 +981,223 @@ writeLines(sprintf('There are %s patients with plasma hrp2 and BUN measured',
 ## Comparison with a lactate threshold of 5 mmol/L
 
 ```{r lactate}
-mod_bun = lme4::glmer(Died ~ Age_category + Coma + as.numeric(BUN>10) + (1|STUDY), family = 'binomial', data = sm_data_analysis %>% filter(Age<15))
+# Helper: adjusted odds ratios with 95% CIs on the Wald scale, for reporting
+f_or_table = function(mod, terms = NULL){
+  co = lme4::fixef(mod)
+  ci = suppressMessages(confint(mod, method = 'Wald'))
+  keep = if(is.null(terms)) names(co)[names(co) != '(Intercept)'] else terms
+  out = data.frame(
+    term = keep,
+    OR    = round(exp(co[keep]), 2),
+    lower = round(exp(ci[keep, 1]), 2),
+    upper = round(exp(ci[keep, 2]), 2),
+    row.names = NULL)
+  out$OR_CI = sprintf('%.2f (%.2f-%.2f)', out$OR, out$lower, out$upper)
+  out
+}
+
+mod_bun = lme4::glmer(Died_28D ~ Age_category + Coma + as.numeric(BUN>10) + (1|STUDY), family = 'binomial', data = sm_data_analysis %>% filter(Age<15))
 # summary(mod_bun)
 fixef(mod_bun)
 
-mod_creat = lme4::glmer(Died ~ Age_category + Coma + as.numeric(Creatinine_fold_change_Pottel_CG>log2(3)) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
+mod_creat = lme4::glmer(Died_28D ~ Age_category + Coma + as.numeric(Creatinine_fold_change_Pottel_CG>log2(3)) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
 # summary(mod_creat)
 fixef(mod_creat)
 
-mod_lactate = lme4::glmer(Died ~ Age_category + Coma + as.numeric(Lactate>5) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
+mod_lactate = lme4::glmer(Died_28D ~ Age_category + Coma + as.numeric(Lactate>5) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
 # summary(mod_lactate)
 fixef(mod_lactate)
 
-mod_lactate2 = lme4::glmer(Died ~ Age_category + Coma + as.numeric(Lactate>5)*as.numeric(Hb<5) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
+mod_lactate2 = lme4::glmer(Died_28D ~ Age_category + Coma + as.numeric(Lactate>5)*as.numeric(Hb<5) + (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<15))
 summary(mod_lactate2)
 fixef(mod_lactate2)
 
-mod_both = lme4::glmer(Died ~ Age + Coma + as.numeric(Lactate>5) + as.numeric(BUN>10) + as.numeric(Creatinine_fold_change_Pottel_CG>log2(3))+ (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<5))
+mod_both = lme4::glmer(Died_28D ~ Age + Coma + as.numeric(Lactate>5) + as.numeric(BUN>10) + as.numeric(Creatinine_fold_change_Pottel_CG>log2(3))+ (1|STUDY), family = 'binomial', data = sm_data_analysis%>% filter(Age<5))
 summary(mod_both)
 fixef(mod_both)
 
-mod_both = mgcv::gam(Died ~ s(Age) + Coma + as.numeric(Lactate>5) + as.numeric(BUN>10) + as.numeric(Creatinine_fold_change_Schwartz>log2(3))+ s(SITE_STUDY, bs='re'), 
+mod_both_gam = mgcv::gam(Died_28D ~ s(Age) + Coma + as.numeric(Lactate>5) + as.numeric(BUN>10) + as.numeric(Creatinine_fold_change_Schwartz>log2(3))+ s(SITE_STUDY, bs='re'),
                      family = 'binomial', data = sm_data_analysis%>% filter(Age<5))
-summary(mod_both)
+summary(mod_both_gam)
+```
+
+### Reported comparison of urea >10 mmol/L versus lactate >5 mmol/L
+
+This is the model quoted in the Results: all ages, age as a continuous variable,
+adjusted for coma status, with nested random intercepts for study and study site,
+fitted to the patients with both a lactate and a urea measurement.
+
+```{r lactate_vs_bun_reported}
+sm_lactate_bun = sm_data_analysis %>% filter(!is.na(Lactate), !is.na(BUN))
+
+writeLines(sprintf('n=%s patients had both lactate and urea measured (n=%s children <15 years)',
+                   nrow(sm_lactate_bun), sum(sm_lactate_bun$Age < 15)))
+
+mod_lactate_comp = lme4::glmer(
+  Died_28D ~ Coma + as.numeric(Lactate>5) + Age_category +
+    (1|STUDY/SITE_STUDY),
+  family = 'binomial', data = sm_lactate_bun %>% filter(Age<15))
+
+mod_bun_comp = lme4::glmer(
+  Died_28D ~ Coma + as.numeric(BUN>10) +
+    (1|STUDY/SITE_STUDY),
+  family = 'binomial', data = sm_lactate_bun %>% filter(Age<15))
+
+mod_bun_lactate_comp = lme4::glmer(
+  Died_28D ~ Coma + as.numeric(Lactate>5) + as.numeric(BUN>10) +
+    (1|STUDY/SITE_STUDY),
+  family = 'binomial', data = sm_lactate_bun %>% filter(Age<15))
+
+summary(mod_lactate_comp)
+summary(mod_bun_comp)
+summary(mod_bun_lactate_comp)
+
+print(f_or_table(mod_lactate_comp,     terms = c('as.numeric(Lactate > 5)', 'ComaYes')))
+print(f_or_table(mod_bun_comp,         terms = c('as.numeric(BUN > 10)', 'ComaYes')))
+print(f_or_table(mod_bun_lactate_comp,
+                 terms = c('as.numeric(BUN > 10)', 'as.numeric(Lactate > 5)', 'ComaYes')))
+```
+
+
+### Diagnostic accuracy of urea >10 mmol/L, lactate >5 mmol/L and creatinine >3x baseline
+
+Sensitivity, specificity and discrimination for death by day 28 for the three
+candidate severe malaria thresholds.
+
+Panel A reports each marker on every patient in whom that marker was measured.
+This uses all the available data, but the three rows then refer to different
+patients, contributed by different studies and with different underlying
+mortality, so **the rows are not directly comparable with each other**. The
+predictive values in particular depend on the mortality of whichever population
+contributed that marker. Panels B and C give the valid head-to-head comparisons,
+restricted to the patients in whom the markers being compared were both (or all)
+measured; a paired test of two AUCs requires the same patients. Confidence
+intervals for differences in AUC come both from the DeLong method, which treats
+patients as independent, and from resampling whole studies, which reflects the
+clustering in these pooled data.
+
+This chunk uses `Creatinine_fold_change_Pottel_CG`, created earlier in this
+document.
+
+```{r diagnostic_accuracy_markers}
+library(pROC)
+
+acc_data = sm_data_analysis %>% mutate(died = Died_28D == 1)
+
+# Each marker: the continuous variable used for the ROC, and the binary rule.
+# Note the creatinine fold change is already on the log2 scale, so the ">3x
+# baseline" rule is expressed as > log2(3).
+MARKERS = list(
+  list(key = 'Urea',       label = 'Urea (BUN) >10 mmol/L',
+       var = 'BUN',
+       rule = function(d) d$BUN > 10),
+  list(key = 'Lactate',    label = 'Lactate >5 mmol/L',
+       var = 'Lactate',
+       rule = function(d) d$Lactate > 5),
+  list(key = 'Creatinine', label = 'Creatinine >3x baseline',
+       var = 'Creatinine_fold_change_Pottel_CG',
+       rule = function(d) d$Creatinine_fold_change_Pottel_CG > log2(3))
+)
+
+# Exact (Clopper-Pearson) intervals for each proportion
+f_ci_prop = function(x, n) if(n == 0) c(NA, NA) else as.numeric(binom.test(x, n)$conf.int)
+f_pc      = function(p, lo, hi) sprintf('%.1f (%.1f-%.1f)', 100*p, 100*lo, 100*hi)
+
+f_marker_perf = function(pos, died, label){
+  tp = sum(pos & died);  fp = sum(pos & !died)
+  fn = sum(!pos & died); tn = sum(!pos & !died)
+  sens = tp/(tp+fn); spec = tn/(tn+fp); ppv = tp/(tp+fp); npv = tn/(tn+fn)
+  data.frame(
+    Test        = label,
+    n           = length(died),
+    deaths      = sum(died),
+    pct_died    = sprintf('%.1f', 100*mean(died)),
+    pct_flagged = sprintf('%.1f', 100*mean(pos)),
+    Sensitivity = do.call(f_pc, c(list(sens), as.list(f_ci_prop(tp, tp+fn)))),
+    Specificity = do.call(f_pc, c(list(spec), as.list(f_ci_prop(tn, tn+fp)))),
+    PPV         = do.call(f_pc, c(list(ppv),  as.list(f_ci_prop(tp, tp+fp)))),
+    NPV         = do.call(f_pc, c(list(npv),  as.list(f_ci_prop(tn, tn+fn)))),
+    Youden_J    = sprintf('%.3f', sens + spec - 1))
+}
+
+f_auc_str = function(died, marker){
+  ci = as.numeric(ci.auc(roc(died, marker, quiet = TRUE), method = 'delong'))
+  sprintf('%.3f (%.3f-%.3f)', ci[2], ci[1], ci[3])
+}
+
+## ---- A. each marker on all patients in whom it was measured ---------------
+writeLines('===== A. Each marker, all patients in whom that marker was measured =====')
+tab_A = bind_rows(lapply(MARKERS, function(m){
+  s = acc_data[!is.na(acc_data[[m$var]]), ]
+  p = f_marker_perf(m$rule(s), s$died, m$label)
+  p$AUC = f_auc_str(s$died, s[[m$var]])
+  p
+}))
+print(as.data.frame(tab_A), row.names = FALSE)
+
+writeLines('\nStudies contributing to each population:')
+for(m in MARKERS){
+  s = acc_data[!is.na(acc_data[[m$var]]), ]
+  writeLines(sprintf('  %-11s %2d studies: %s', m$key, length(unique(s$STUDY)),
+                     paste(sort(unique(as.character(s$STUDY))), collapse = ', ')))
+}
+
+## ---- B. pairwise head-to-head comparisons ---------------------------------
+writeLines('\n===== B. Pairwise comparisons (patients with both markers of the pair) =====')
+set.seed(20250826)
+B_boot = 2000
+for(pr in list(c(1,2), c(1,3), c(2,3))){
+  m1 = MARKERS[[pr[1]]]; m2 = MARKERS[[pr[2]]]
+  s  = acc_data[!is.na(acc_data[[m1$var]]) & !is.na(acc_data[[m2$var]]), ]
+  r1 = roc(s$died, s[[m1$var]], quiet = TRUE)
+  r2 = roc(s$died, s[[m2$var]], quiet = TRUE)
+  dl = roc.test(r1, r2, method = 'delong', paired = TRUE)
+  auc_diff = as.numeric(auc(r1)) - as.numeric(auc(r2))
+  studies_ = unique(s$STUDY)
+  boot_diff = replicate(B_boot, {
+    bs = bind_rows(lapply(sample(studies_, length(studies_), replace = TRUE),
+                          function(x) s[s$STUDY == x, ]))
+    if(length(unique(bs$died)) < 2) return(NA_real_)
+    tryCatch(as.numeric(auc(roc(bs$died, bs[[m1$var]], quiet = TRUE))) -
+             as.numeric(auc(roc(bs$died, bs[[m2$var]], quiet = TRUE))),
+             error = function(e) NA_real_)
+  })
+  boot_diff = boot_diff[!is.na(boot_diff)]
+  writeLines(sprintf('\n  %s vs %s (n=%s, %s deaths)', m1$key, m2$key,
+                     format(nrow(s), big.mark = ','), sum(s$died)))
+  writeLines(sprintf('    AUC %.3f vs %.3f | difference %+.3f | DeLong p = %.3g | study-clustered 95%% CI %.3f to %.3f',
+                     as.numeric(auc(r1)), as.numeric(auc(r2)), auc_diff, dl$p.value,
+                     quantile(boot_diff, .025), quantile(boot_diff, .975)))
+}
+
+## ---- C. three-way comparison, all three measured --------------------------
+writeLines('\n===== C. Three-way comparison (patients with all three measured) =====')
+acc3 = acc_data %>% filter(!is.na(BUN), !is.na(Lactate),
+                           !is.na(Creatinine_fold_change_Pottel_CG))
+writeLines(sprintf('  n = %s (%s deaths, %.1f%%)', format(nrow(acc3), big.mark = ','),
+                   sum(acc3$died), 100*mean(acc3$died)))
+tab_C = bind_rows(lapply(MARKERS, function(m){
+  p = f_marker_perf(m$rule(acc3), acc3$died, m$label)
+  p$AUC = f_auc_str(acc3$died, acc3[[m$var]])
+  p
+}))
+print(as.data.frame(tab_C)[, c('Test','pct_flagged','Sensitivity','Specificity',
+                               'PPV','NPV','Youden_J','AUC')], row.names = FALSE)
+
+## ---- D. by age group, each marker on its own population -------------------
+writeLines('\n===== D. By age group, each marker on its own population =====')
+for(nm in c('children <15 y', 'adults >=15 y')){
+  in_age = if(nm == 'children <15 y') acc_data$Age < 15 else acc_data$Age >= 15
+  writeLines(sprintf('\n-- %s --', nm))
+  tab_D = bind_rows(lapply(MARKERS, function(m){
+    s = acc_data[in_age & !is.na(acc_data[[m$var]]), ]
+    p = f_marker_perf(m$rule(s), s$died, m$label)
+    p$AUC = f_auc_str(s$died, s[[m$var]])
+    p
+  }))
+  print(as.data.frame(tab_D)[, c('Test','n','deaths','pct_flagged','Sensitivity',
+                                 'Specificity','PPV','NPV','AUC')], row.names = FALSE)
+}
 ```
 
 

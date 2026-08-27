@@ -44,7 +44,7 @@ sm_data_analysis = sm_data_analysis %>%
          ))
 
 print(aggregate(Age ~ STUDY, data = sm_data_analysis, FUN = quantile))
-print(aggregate(Died ~ STUDY, data = sm_data_analysis, FUN = function(x) round(100*mean(x),1)))
+print(aggregate(Died_28D ~ STUDY, data = sm_data_analysis, FUN = function(x) round(100*mean(x),1)))
 
 
 writeLines(sprintf('There are %s patients in the whole dataset. Of these %s patients are in the analysis dataset. %s patients have creatinine measured; %s patients have BUN measured; %s patients have both measured.',
@@ -59,9 +59,9 @@ writeLines(sprintf('n=%s patients are < than 15 years of age',
                    sum(sm_data_analysis$Age<15)))
 writeLines(sprintf('n=%s patients are from Africa',
                    sum(sm_data_analysis$Continent=='AFRICA')))
-writeLines(sprintf('n=%s patients died with 28 days (%s%%)',
-                   sum(sm_data_analysis$Died),
-                   round(100*mean(sm_data_analysis$Died),1)))
+writeLines(sprintf('n=%s patients died within 28 days (%s%%)',
+                   sum(sm_data_analysis$Died_28D),
+                   round(100*mean(sm_data_analysis$Died_28D),1)))
 
 summary_table <- sm_data_analysis %>%
   group_by(STUDY) %>%
@@ -73,7 +73,7 @@ summary_table <- sm_data_analysis %>%
       a <- Age[!is.na(Age)]
       sprintf("%.1f [%.1f–%.1f]", round(median(a)), round(quantile(a, 0.25)), round(quantile(a, 0.75)))
     },
-    Mortality = round(100*mean(Died),1),
+    Mortality = round(100*mean(Died_28D),1),
     `Creatinine measured`=sum(!is.na(Creatinine_umol_L)),
     `BUN measured` = sum(!is.na(BUN)),
     `Lactate measured` = sum(!is.na(Lactate))
@@ -550,7 +550,7 @@ sm_dat_bun = sm_data_analysis %>% filter(BUN_ANALYSIS)
 summary_df <- sm_dat_bun %>% filter(!is.na(BUN)) %>%
   group_by(Coma, BUN_groups, Age_Categories3) %>%
   summarise(
-    mortality = mean(Died),
+    mortality = mean(Died_28D),
     n = n(),
     se = sqrt(mortality * (1 - mortality) / n),
     lower = 100*(mortality - 1.96 * se),
@@ -591,8 +591,8 @@ sm_dat_creat = sm_data_analysis %>%
 summary_df <- sm_dat_creat %>% filter(!is.na(Creatinine_umol_L)) %>%
   group_by(Creat_groups, Coma, Age_Categories3) %>%
   summarise(
-    mortality = mean(Died),
-    deaths = sum(Died),
+    mortality = mean(Died_28D),
+    deaths = sum(Died_28D),
     n = n(),
     se = sqrt(mortality * (1 - mortality) / n),
     lower = 100*(mortality - 1.96 * se),

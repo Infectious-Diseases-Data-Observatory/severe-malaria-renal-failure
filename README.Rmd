@@ -1,6 +1,12 @@
+---
+output: github_document
+---
+
 <!-- README.md is generated from README.Rmd. Please edit that file and re-knit. -->
 
-
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
 
 # Defining renal failure in severe malaria
 
@@ -87,8 +93,7 @@ Create the output directory, place the granted data release under `Data/`, then
 run the steps in order. Each `.Rmd` is knitted (or run chunk by chunk in RStudio)
 from the repository root.
 
-
-``` r
+```{r}
 dir.create("RData", showWarnings = FALSE)
 ```
 
@@ -96,8 +101,7 @@ dir.create("RData", showWarnings = FALSE)
 the top of `Make_Analysis_dataset.Rmd`, or run it directly, to regenerate
 `Data/adam_out.csv` from the SDTM domains. Then knit:
 
-
-``` r
+```{r}
 rmarkdown::render("Make_Analysis_dataset.Rmd")
 ```
 
@@ -111,8 +115,7 @@ time — random-forest chained equations over ~16,000 patients and 25 variables.
 
 **2. Fit the urea models.**
 
-
-``` r
+```{r}
 rmarkdown::render("BUN_Analysis.Rmd")
 ```
 
@@ -121,8 +124,7 @@ loaded by `Creatinine_Analysis.Rmd`, so this step must precede step 3.
 
 **3. Fit the creatinine models and the marker comparisons.**
 
-
-``` r
+```{r}
 rmarkdown::render("Creatinine_Analysis.Rmd")
 ```
 
@@ -130,16 +132,14 @@ Writes `RData/creatinine_models.RData` and `RData/Model_both.RData`.
 
 **4. Descriptive analyses and the remaining figures.**
 
-
-``` r
+```{r}
 rmarkdown::render("renal_analysis.Rmd")
 rmarkdown::render("Venn_Diagrams.Rmd")
 ```
 
 **5. Random-effect summaries.**
 
-
-``` r
+```{r}
 source("Variance_components.R")
 ```
 
@@ -167,11 +167,10 @@ commented out without affecting the primary analysis.
 
 ## Dependencies
 
-Developed under R version 4.6.0 (2026-04-24). Install the packages used across the
+Developed under `r R.version.string`. Install the packages used across the
 pipeline:
 
-
-``` r
+```{r}
 install.packages(c(
   # data handling and plotting
   "tidyverse", "readr", "dplyr", "tidyr", "tibble", "ggplot2", "scales",
