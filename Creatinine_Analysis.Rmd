@@ -442,6 +442,50 @@ ranef_site %>% group_by(model) %>%
             .groups  = 'drop')
 ```
 
+### Variance components for all fitted models
+
+Posterior summaries of the nested random-effect standard deviations, with the
+corresponding median odds ratios (S1 Table). The median odds ratio is the median
+of the distribution of odds ratios obtained by comparing two patients with
+identical covariates drawn from two randomly chosen clusters, ranking the
+higher-risk patient against the lower-risk one; for a random-intercept standard
+deviation $\sigma$ it equals $\exp\{\sqrt{2}\,\sigma\,\Phi^{-1}(0.75)\}$. The
+"both levels" column applies that formula to the total standard deviation, and so
+compares two sites in two different studies.
+
+```{r variance_components}
+f_vc_ci  = function(x) sprintf('%.2f (%.2f-%.2f)', median(x), quantile(x, .025), quantile(x, .975))
+f_mor    = function(sigma) exp(sqrt(2) * sigma * qnorm(0.75))
+
+f_variance_components = function(m){
+  d  = brms::as_draws_df(m)
+  s1 = d[['sd_STUDY__Intercept']]
+  s2 = d[['sd_STUDY:SITE_STUDY__Intercept']]
+  st = sqrt(s1^2 + s2^2)
+  data.frame(n         = nobs(m),
+             n_study   = length(unique(m$data$STUDY)),
+             n_site    = length(unique(m$data$SITE_STUDY)),
+             sd_study  = f_vc_ci(s1),
+             sd_site   = f_vc_ci(s2),
+             sd_total  = f_vc_ci(st),
+             ICC       = f_vc_ci((s1^2 + s2^2) / (s1^2 + s2^2 + pi^2/3)),
+             MOR_study = f_vc_ci(f_mor(s1)),
+             MOR_site  = f_vc_ci(f_mor(s2)),
+             MOR_both  = f_vc_ci(f_mor(st)))
+}
+
+VC_MODELS = list(
+  `Cr FC (Pottel/CG), t2` = Creat_tensor_prod_fit_Pottel_CG,
+  `Cr FC (Schwartz), t2`  = Creat_tensor_prod_fit_Schwartz,
+  `Cr absolute, t2`       = Creat_tensor_prod_fit_abs,
+  `Cr FC (Pottel/CG), fs` = Creat_fs_mod_fit_Pottel_CG,
+  `Cr FC (Schwartz), fs`  = Creat_fs_mod_fit_Schwartz,
+  `BUN, t2`               = BUN_tensor_prod_fit,
+  `BUN, fs`               = BUN_fs_mod_fit)
+
+do.call(rbind, lapply(VC_MODELS, f_variance_components))
+```
+
 
 Make some test data
 
