@@ -320,13 +320,19 @@ p4=sm_data_analysis%>%filter(!is.na(BUN))%>%
   annotation_logticks(sides='l') + theme_bw(base_size = 15)+
   theme(legend.position='none')
 
-grid.arrange(p1,p3,p2,p4,nrow=2)
+## The two weight panels (top row) carry an axis break: weight starts at 2 kg, so
+## the square-root axis begins at 14% of its range and a break marks a real gap.
+## The two age panels (bottom row) get no break: age runs from 0.04 years, so that
+## axis already begins at effectively zero and a break would imply a gap that is
+## not there. Both y axes are log scaled and are left untouched.
+grid.arrange(f_axis_break(p1,'x'), f_axis_break(p3,'x'),
+             p2, p4, nrow=2)
 ```
 
 Plot Creatinines by study
 
 ```{r creatinine_by_study, fig.width=12, fig.height=7}
-sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
+p_s13 = sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
   ggplot(aes(x=Weight_kg, y = Creatinine_umol_L, colour = `Died within 28 days`))+
   geom_jitter(height = 0.01, width = .1, alpha=0.5,shape=4)+
   ylab('Creatinine (umol/L)')+xlab('Weight (kg)')+
@@ -338,6 +344,8 @@ sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
    scale_colour_manual(
         name = "Died",
         values = c( "Yes" = "darkred", "No" = 'lightblue') )
+## weight is square-root scaled, so mark the axis with a break
+f_axis_break(p_s13, 'x')
 ```
 
 
@@ -388,7 +396,7 @@ aggregate(Died_28D ~ (Age<15), sm_data_analysis, function(x) c(round(100*mean(x)
 Plot BUN by study
 
 ```{r bun_by_study, fig.width=12, fig.height=7}
-sm_data_analysis %>% filter(!is.na(BUN)) %>%
+p_s12 = sm_data_analysis %>% filter(!is.na(BUN)) %>%
   ggplot(aes(x=Weight_kg, y = BUN, colour = `Died within 28 days`))+
   geom_jitter(height = 0.01, width = .1, alpha=0.5,shape=4)+
   ylab('BUN (mmol/L)')+xlab('Weight (kg)')+
@@ -400,6 +408,8 @@ sm_data_analysis %>% filter(!is.na(BUN)) %>%
    scale_colour_manual(
         name = "Died",
         values = c( "Yes" = "darkred", "No" = 'lightblue') )
+## weight is square-root scaled, so mark the axis with a break
+f_axis_break(p_s12, 'x')
 ```
 
 
@@ -409,7 +419,7 @@ BUN in studies that used the i-stat
 xx = sm_data_analysis%>%
   filter(!is.na(BUN), STUDY %in% c('AQUAMAT','SEAQUAMAT','FEAST','Namazzi 2022', 'Conroy 2019'))
 
-sm_data_analysis%>%
+p_s5 = sm_data_analysis%>%
   filter(!is.na(BUN), STUDY %in% c('AQUAMAT','SEAQUAMAT','FEAST','Namazzi 2022', 'Conroy 2019'))%>%
   ggplot(aes(x=Weight_kg, y = BUN, colour = STUDY))+
   geom_jitter(height = 0.03, width = .1, alpha=my_alpha)+
@@ -419,6 +429,8 @@ sm_data_analysis%>%
   geom_smooth(se=SEsmooth,method = lm)+
   scale_y_log10(breaks = breaks, minor_breaks = minor_breaks) +
   annotation_logticks(sides='l') + theme_bw(base_size = 15)
+## weight is square-root scaled, so mark the axis with a break
+f_axis_break(p_s5, 'x')
 ```
 
 
@@ -553,7 +565,9 @@ summary_df <- sm_dat_bun %>% filter(!is.na(BUN)) %>%
     mortality = mean(Died_28D),
     n = n(),
     se = sqrt(mortality * (1 - mortality) / n),
-    lower = 100*(mortality - 1.96 * se),
+    ## clamp the lower bound at zero: mortality is a proportion, and an
+    ## unclamped lower bound would be clipped by the zero-anchored y axis
+    lower = 100*pmax(0, mortality - 1.96 * se),
     upper = 100*(mortality + 1.96 * se),
     mortality = 100*mortality,
     .groups = "drop"
@@ -576,7 +590,14 @@ p1=summary_df %>% ggplot(aes(x = BUN_groups, y = mortality, group = Coma, colour
     y = "Mortality (%)",
     size = "n") + 
   geom_hline(yintercept = 100*mortality_threshold)+
-  theme_bw(base_size = 16)+facet_wrap(vars(Age_Categories3))
+  theme_bw(base_size = 16)+facet_wrap(vars(Age_Categories3)) +
+  ## Pin the panel floor exactly at zero, and label it. Both parts are needed:
+  ## expand_limits() puts zero inside the scale range (the smallest clamped lower
+  ## bound is above zero, so without it the axis starts at the data minimum and
+  ## clips the lowest points), and dropping the lower expansion then puts the
+  ## panel edge on zero rather than 5% below it.
+  expand_limits(y = 0) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)))
 ```
 
 
@@ -595,7 +616,9 @@ summary_df <- sm_dat_creat %>% filter(!is.na(Creatinine_umol_L)) %>%
     deaths = sum(Died_28D),
     n = n(),
     se = sqrt(mortality * (1 - mortality) / n),
-    lower = 100*(mortality - 1.96 * se),
+    ## clamp the lower bound at zero: mortality is a proportion, and an
+    ## unclamped lower bound would be clipped by the zero-anchored y axis
+    lower = 100*pmax(0, mortality - 1.96 * se),
     upper = 100*(mortality + 1.96 * se),
     mortality = 100*mortality,
     .groups = "drop"
@@ -618,7 +641,10 @@ p2=summary_df %>% ggplot(aes(x = Creat_groups, y = mortality, group = Coma, colo
     x = "Creatinine (umol/L)",
     y = "Mortality (%)",
     size = "n") + geom_hline(yintercept = 100*mortality_threshold)+
-  theme_bw(base_size = 16)+facet_wrap(vars(Age_Categories3))
+  theme_bw(base_size = 16)+facet_wrap(vars(Age_Categories3)) +
+  ## Pin the panel floor exactly at zero and label it (see the BUN panel above)
+  expand_limits(y = 0) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)))
 sum(summary_df$n)
 ```
 

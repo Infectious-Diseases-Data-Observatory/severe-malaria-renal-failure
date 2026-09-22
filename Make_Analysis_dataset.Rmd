@@ -172,7 +172,14 @@ sm_data =
 sm_data$wfaz = ifelse(sm_data$wfaz>5 | sm_data$wfaz< -6, NA, sm_data$wfaz)
 sm_data %>% dplyr::filter(!is.na(wfaz)) %>% 
   ggplot(aes(x= Age, y = wfaz, color=SEX))+geom_point()+geom_hline(yintercept = 0) +
-  theme_minimal() + xlab('Age (years)')+ylab('Weight for age z-score')+
+  ## x axis (age) is linear -> anchored at zero; the y axis (z-score) already
+  ## spans negative to positive and therefore already includes zero. Anchoring at
+  ## zero puts a label on each panel's left edge, so the breaks are thinned and the
+  ## panels given more room, otherwise that label collides with the 10 to its left.
+  expand_limits(x = 0) +
+  scale_x_continuous(breaks = c(0, 5, 10)) +
+  theme_minimal() + theme(panel.spacing.x = unit(1, 'lines')) +
+  xlab('Age (years)')+ylab('Weight for age z-score')+
   geom_smooth(aes(group=NA))+
   facet_wrap(~STUDY)
 ```

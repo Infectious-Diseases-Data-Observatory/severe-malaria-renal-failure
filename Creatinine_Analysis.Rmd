@@ -132,7 +132,17 @@ mod_bun_baseline_age = mgcv::gam(b_bun ~ s(sqrt(Age),k=5), data=baseline_data %>
 round(predict(mod_bun_baseline_age, newdata = data.frame(Age=c(0.5,3,10))),1)
 
 
-grid.arrange(p1,p2,p3,p4)
+## The four y axes are linear (baseline creatinine, baseline BUN) -> anchored at
+## zero. The height x axes get a break instead: no patient has a height near zero,
+## so a zero-anchored height axis would leave a third of the panel empty, which is
+## the case the editor's fallback is for. The age x axes are left alone entirely:
+## age already runs to ~0 here (minimum 0.04 years), and expand_limits(x = 0) would
+## make the stat_function reference curves re-evaluate down to x = 0, dragging the
+## y axis negative.
+grid.arrange(f_zero(p1,'y'),
+             f_axis_break(f_zero(p2,'y'),'x'),
+             f_zero(p3,'y'),
+             f_axis_break(f_zero(p4,'y'),'x'))
 
 # 
 # xx = sm_data %>% filter(!is.na(Baseline_Creatinine) | !is.na(`Baseline_Urea Nitrogen`))
@@ -566,7 +576,7 @@ test_data_year = expand_grid(Creatinine_fold_change_Pottel_CG = c(1,3),
 
 preds_Pottel_CG = posterior_epred(Creat_tensor_prod_fit_Pottel_CG, newdata = test_data_year, re_formula = NA)
 test_data_year$pred_year = colMeans(preds_Pottel_CG)
-test_data_year %>% ggplot(aes(x=year_admission, y = pred_year, 
+p_s16 = test_data_year %>% ggplot(aes(x=year_admission, y = pred_year, 
                               group = Creatinine_fold_change_Pottel_CG))+
   geom_line(linewidth = 1.5)+ ylab('Predicted mortality')+
   theme_bw(base_size = 15)+
@@ -577,6 +587,9 @@ test_data_year %>% ggplot(aes(x=year_admission, y = pred_year,
     values = c("2" = "orange", "5" = "darkred", "20" = 'purple') )+
   theme(legend.position = c(0.02, 0.98),  # (x, y) in [0,1] relative to plot area
         legend.justification = c(0, 1))   # align legend's bottom-left to that point
+## y axis is predicted mortality (linear) -> zero. The x axis is calendar year:
+## anchoring it at zero would run the axis from year 0, so it gets a break instead.
+f_axis_break(f_zero(p_s16, 'y'), 'x')
 ```
 
 
@@ -677,7 +690,9 @@ p2c_threshold=test_data %>%mutate(Age = as.factor(Age))%>%
   geom_hline(yintercept = .9)+geom_vline(xintercept = 3)+
   theme(legend.position = 'none')
 
-grid.arrange(p1c, p1c_threshold, p2c, p2c_threshold)
+## y axes are predicted mortality / posterior probability, both linear -> zero
+grid.arrange(f_zero(p1c,'y'), f_zero(p1c_threshold,'y'),
+             f_zero(p2c,'y'), f_zero(p2c_threshold,'y'))
 
 
 sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
@@ -694,9 +709,15 @@ Combined figure with BUN for paper
 ```{r combined_fig, fig.width=12, fig.height=10}
 load('RData/bun_figures.RData')
 # combined fig 3
-grid.arrange(p0c+geom_vline(xintercept = c(265, 150)), p1c+theme(legend.position = 'none'), 
-             p1+theme(legend.position = 'none'),p0c_threshold, 
-             p1c_threshold, p1_threshold, nrow=2)
+## all six y axes are linear (predicted mortality, posterior probability) -> zero.
+## p1 / p1_threshold are loaded from RData/bun_figures.RData, so they are anchored
+## here rather than at their definition in BUN_Analysis.Rmd.
+grid.arrange(f_zero(p0c+geom_vline(xintercept = c(265, 150)),'y'),
+             f_zero(p1c+theme(legend.position = 'none'),'y'),
+             f_zero(p1+theme(legend.position = 'none'),'y'),
+             f_zero(p0c_threshold,'y'),
+             f_zero(p1c_threshold,'y'),
+             f_zero(p1_threshold,'y'), nrow=2)
 ```
 
 
@@ -761,7 +782,9 @@ p2c_threshold=test_data %>%mutate(Age = as.factor(Age))%>%
   geom_hline(yintercept = .9)+geom_vline(xintercept = 3)+
   theme(legend.position = 'none')
 
-grid.arrange(p1c, p1c_threshold, p2c, p2c_threshold)
+## y axes are predicted mortality / posterior probability, both linear -> zero
+grid.arrange(f_zero(p1c,'y'), f_zero(p1c_threshold,'y'),
+             f_zero(p2c,'y'), f_zero(p2c_threshold,'y'))
 
 
 sm_data_analysis %>% filter(!is.na(Creatinine_umol_L)) %>%
@@ -1468,11 +1491,18 @@ p5=ggplot(tab, aes(x = Acidotic, y = Uraemia, fill = propz)) +
   theme_bw(base_size = 16)
 
 
-grid.arrange(p0+theme(legend.position = 'none'),
-             p1+theme(legend.position = 'none'),
-             p2+theme(legend.position = 'none'),
-             p3+theme(legend.position = 'none'),
-             p4+theme(legend.position = 'none'),
+## Potassium (linear) is the y axis in all five scatter panels -> anchored at zero.
+## The bicarbonate and lactate x axes (p3, p4) are linear -> also anchored at zero.
+## p1/p2 x axes are BUN and creatinine fold change on log scales -> untouched.
+## p0's x axis is age on a square-root scale, but it already begins at effectively
+## zero (minimum 0.04 years, i.e. 2% along the axis), so a break marker would imply
+## a gap that is not there; it gets the y anchor only.
+## p5 is a tile plot on two discrete axes -> unchanged.
+grid.arrange(f_zero(p0+theme(legend.position = 'none'),'y'),
+             f_zero(p1+theme(legend.position = 'none'),'y'),
+             f_zero(p2+theme(legend.position = 'none'),'y'),
+             f_zero(p3+theme(legend.position = 'none'),'xy'),
+             f_zero(p4+theme(legend.position = 'none'),'xy'),
              p5)
 
 mod_hyperkalaemia1 = lme4::glmer(Hyperkalaemia ~ Age_Categories3+(Creatinine_fold_change_Pottel_CG>log2(3))+(Bicarbonate_mEq_L<10)+(1|SITEID), family = 'binomial', data = xx %>% filter(Age<15))

@@ -1,5 +1,8 @@
 ## multiple imputation using random forests
 library(tidyverse)
+
+## axis helpers f_zero() / f_axis_break() used by the supplementary figures below
+if (!exists('f_axis_break')) source('setup_parameters.R')
 # library(conflicted)
 library(missForest)
 library(doParallel)
@@ -91,8 +94,11 @@ p <- ggplot(miss_data, aes(x = variable, y = .row_id, fill = is_missing)) +
   )
 
 
-# ggsave(filename = 'Missing_key_data.pdf', plot = p1)
-ggsave(filename = '~/Dropbox/Apps/Overleaf/Severe malaria renal failure/SupplementaryFigures/Missing_key_data_analysis_pop.pdf', plot = p)
+## Output directory for supplementary figures. Override before sourcing this file
+## to write elsewhere; previously this path was hard-coded.
+if (!exists('SUPP_FIG_DIR'))
+  SUPP_FIG_DIR = '~/Dropbox/Apps/Overleaf/Severe malaria renal failure/SupplementaryFigures'
+ggsave(filename = file.path(SUPP_FIG_DIR, 'Missing_key_data_analysis_pop.pdf'), plot = p)
 
 sm_data_for_imputation = sm_data[, key_cols ] %>%
   mutate(across(c(STUDY,SEX,Anemia,Died), as.factor),
@@ -138,8 +144,12 @@ table(numeric_df$Weight_Height_missing )
 p1= numeric_df %>% ggplot(aes(x=Age, y = Height_cm, colour = Height_missing))+geom_jitter(alpha=0.5)+theme_minimal()
 p2= numeric_df %>% ggplot(aes(x=Age, y = Weight_kg, colour = Weight_missing))+geom_jitter(alpha=0.5)+theme_minimal()
 p3= numeric_df %>% ggplot(aes(x=Height_cm, y = Weight_kg, colour = Weight_Height_missing))+geom_jitter(alpha=0.5)+theme_minimal()
-p = gridExtra::grid.arrange(p1,p2,p3)
-ggsave(filename = '~/Dropbox/Apps/Overleaf/Severe malaria renal failure/SupplementaryFigures/Height_Weight_imputation.pdf', plot = p)
+## Age and weight axes are linear and run close to zero, so they are anchored there.
+## Height axes get a break instead: no patient has a height near zero.
+p = gridExtra::grid.arrange(f_axis_break(f_zero(p1,'x'),'y'),
+                            f_zero(p2,'xy'),
+                            f_axis_break(f_zero(p3,'y'),'x'))
+ggsave(filename = file.path(SUPP_FIG_DIR, 'Height_Weight_imputation.pdf'), plot = p)
 
 
 p1=xx %>% ggplot(aes(x=Age, y = Height_cm, colour = STUDY))+geom_point()+geom_smooth(aes(group=NA))+theme(legend.position = 'none')
